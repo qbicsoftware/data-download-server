@@ -1,5 +1,11 @@
 package life.qbic.data_access.rest.download;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -17,10 +23,12 @@ import life.qbic.data_access.measurements.api.MeasurementInfo;
 import life.qbic.data_access.rest.exceptions.GlobalException;
 import life.qbic.data_access.rest.exceptions.GlobalException.ErrorCode;
 import life.qbic.data_access.rest.exceptions.GlobalException.ErrorParameters;
+import life.qbic.data_access.rest.exceptions.MeasurementNotFoundException;
 import life.qbic.data_access.util.zip.api.FileInfo;
 import life.qbic.data_access.util.zip.api.FileTimes;
 import life.qbic.data_access.util.zip.manipulation.BufferedZippingFunctions;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -52,6 +60,12 @@ public class DownloadController {
 
 
   @GetMapping(value = "/measurements/{measurementId}", produces = MediaType.APPLICATION_JSON_VALUE)
+  @Operation(summary = "Download a measurement from the given measurement identifier")
+  @Parameter(name = "measurementId", required = true, description = "The identifier of the measurement to download")
+  @ApiResponses(value = {
+      @ApiResponse(responseCode = "200", description = "successful operation, the measurement is retrieved asynchronously", content = @Content(schema = @Schema(implementation = Void.class))),
+      @ApiResponse(responseCode = "404", description = "measurement not found", content = @Content(schema = @Schema(implementation = Void.class)))
+  })
   public ResponseEntity<StreamingResponseBody> downloadMeasurement(
       final HttpServletResponse response,
       @PathVariable("measurementId") String measurementId) {
@@ -75,12 +89,12 @@ public class DownloadController {
     // we do not set the `Content-Length` as the total size is hard to compute
     // (taking into account fileName length and zip header overheads)
 
-    StreamingResponseBody responseBody = outputStream -> writeDataToStream(outputStream, measurementData,
+    StreamingResponseBody responseBody = outputStream -> writeDataToStream(outputStream,
+        measurementData,
         measurementDataReader);
     return ResponseEntity.ok()
         .contentType(MediaType.APPLICATION_OCTET_STREAM)
         .header("Content-Disposition", "attachment;filename=" + outputFileName)
-        .header("Expires", "0")
         .body(responseBody);
   }
 
