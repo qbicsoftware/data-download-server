@@ -3,9 +3,6 @@
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <artifactId>openbis-connector</artifactId>
-  <packaging>jar</packaging>
-  <version>0.1.0</version>
 
   <parent>
     <groupId>life.qbic</groupId>
@@ -13,18 +10,17 @@
     <version>0.1.0</version>
   </parent>
 
-  <properties>
-    <maven.compiler.source>21</maven.compiler.source>
-    <maven.compiler.target>21</maven.compiler.target>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-  </properties>
+  <groupId>life.qbic.data-access</groupId>
+  <artifactId>openbis-connector</artifactId>
+  <packaging>jar</packaging>
+  <version>0.1.0</version>
 
   <dependencyManagement>
     <dependencies>
       <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-dependencies</artifactId>
-        <version>3.2.2</version>
+        <version>${spring.boot.version}</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -68,7 +64,7 @@
       <classifier>r1700646105</classifier>
     </dependency>
     <dependency>
-      <groupId>life.qbic</groupId>
+      <groupId>life.qbic.data-access</groupId>
       <artifactId>measurement-provider</artifactId>
       <version>0.1.0</version>
     </dependency>
@@ -88,7 +84,7 @@
         <configuration>
           <archive>
             <manifestEntries>
-              <Automatic-Module-Name>${project.groupId}.data_access.openbis.connector</Automatic-Module-Name>
+              <Automatic-Module-Name>life.qbic.data_access.openbis.connector</Automatic-Module-Name>
             </manifestEntries>
           </archive>
         </configuration>

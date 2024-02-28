@@ -21,8 +21,17 @@ public class BufferedZippingFunctions {
 
 
   public static ZipOutputStream zipInto(OutputStream outputStream) {
+    return zipInto(outputStream, ZipOutputStream.STORED);
+  }
+
+  /**
+   * @param outputStream the output stream to zip into
+   * @param method the method to use
+   * @return a zip output stream zipping into the output stream using the zipping method
+   */
+  public static ZipOutputStream zipInto(OutputStream outputStream, int method) {
     ZipOutputStream zipOutputStream = new ZipOutputStream(outputStream);
-    zipOutputStream.setMethod(ZipOutputStream.STORED);
+    zipOutputStream.setMethod(method);
     return zipOutputStream;
   }
 

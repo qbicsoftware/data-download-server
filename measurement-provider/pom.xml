@@ -9,14 +9,10 @@
     <version>0.1.0</version>
   </parent>
 
+  <groupId>life.qbic.data-access</groupId>
   <artifactId>measurement-provider</artifactId>
+  <version>0.1.0</version>
   <packaging>jar</packaging>
-
-  <properties>
-    <maven.compiler.source>21</maven.compiler.source>
-    <maven.compiler.target>21</maven.compiler.target>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-  </properties>
 
   <build>
     <plugins>
@@ -27,7 +23,7 @@
         <configuration>
           <archive>
             <manifestEntries>
-              <Automatic-Module-Name>${project.groupId}.data_access.measurement.provider</Automatic-Module-Name>
+              <Automatic-Module-Name>life.qbic.data_access.measurement.provider</Automatic-Module-Name>
             </manifestEntries>
           </archive>
         </configuration>

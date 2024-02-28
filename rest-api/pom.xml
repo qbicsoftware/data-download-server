@@ -3,9 +3,6 @@
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <artifactId>rest-api</artifactId>
-  <version>0.1.0</version>
-  <packaging>jar</packaging>
 
   <parent>
     <groupId>life.qbic</groupId>
@@ -13,12 +10,11 @@
     <version>0.1.0</version>
   </parent>
 
-  <properties>
-    <maven.compiler.source>21</maven.compiler.source>
-    <maven.compiler.target>21</maven.compiler.target>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <spring.boot.version>3.2.3</spring.boot.version>
-  </properties>
+  <groupId>life.qbic.data-access</groupId>
+  <artifactId>rest-server</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+
 
   <dependencyManagement>
     <dependencies>
@@ -48,17 +44,17 @@
       <version>2.3.0</version>
     </dependency>
     <dependency>
-      <groupId>life.qbic</groupId>
+      <groupId>life.qbic.data-access</groupId>
       <artifactId>measurement-provider</artifactId>
       <version>0.1.0</version>
     </dependency>
     <dependency>
-      <groupId>life.qbic</groupId>
+      <groupId>life.qbic.data-access</groupId>
       <artifactId>openbis-connector</artifactId>
       <version>0.1.0</version>
     </dependency>
     <dependency>
-      <groupId>life.qbic</groupId>
+      <groupId>life.qbic.data-access</groupId>
       <artifactId>zip</artifactId>
       <version>0.1.0</version>
     </dependency>
@@ -70,6 +66,16 @@
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
         <version>${spring.boot.version}</version>
+        <configuration>
+          <mainClass>life.qbic.data_access.rest.DataAccessRestServer</mainClass>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>
