@@ -6,14 +6,22 @@
 
   <groupId>life.qbic</groupId>
   <artifactId>data-access-server</artifactId>
-  <version>1.0-SNAPSHOT</version>
+  <version>0.1.0</version>
   <packaging>pom</packaging>
+
+
   <modules>
     <module>zip</module>
     <module>measurement-provider</module>
     <module>openbis-connector</module>
     <module>rest-api</module>
   </modules>
+
+  <properties>
+    <maven.compiler.source>21</maven.compiler.source>
+    <maven.compiler.target>21</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
 
   <repositories>
     <!-- The order of definitions matters. Explicitly defining central here to make sure it has the highest priority. -->
@@ -38,6 +46,19 @@
       </snapshots>
       <url>https://qbic-repo.qbic.uni-tuebingen.de/repository/maven-releases</url>
     </repository>
+    <repository>
+      <id>nexus-snapshots</id>
+      <name>QBiC Snapshots</name>
+      <releases>
+        <enabled>false</enabled>
+      </releases>
+      <snapshots>
+        <checksumPolicy>fail</checksumPolicy>
+        <enabled>true</enabled>
+        <updatePolicy>always</updatePolicy>
+      </snapshots>
+      <url>https://qbic-repo.qbic.uni-tuebingen.de/repository/maven-snapshots</url>
+    </repository>
   </repositories>
 
   <distributionManagement>
@@ -54,11 +75,5 @@
       <url>https://qbic-repo.qbic.uni-tuebingen.de/repository/maven-snapshots</url>
     </snapshotRepository>
   </distributionManagement>
-
-  <properties>
-    <maven.compiler.source>21</maven.compiler.source>
-    <maven.compiler.target>21</maven.compiler.target>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-  </properties>
 
 </project>

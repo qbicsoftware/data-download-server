@@ -5,11 +5,12 @@
   <modelVersion>4.0.0</modelVersion>
   <artifactId>openbis-connector</artifactId>
   <packaging>jar</packaging>
+  <version>0.1.0</version>
 
   <parent>
     <groupId>life.qbic</groupId>
     <artifactId>data-access-server</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <version>0.1.0</version>
   </parent>
 
   <properties>
@@ -69,7 +70,7 @@
     <dependency>
       <groupId>life.qbic</groupId>
       <artifactId>measurement-provider</artifactId>
-      <version>1.0-SNAPSHOT</version>
+      <version>0.1.0</version>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
