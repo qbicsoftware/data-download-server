@@ -1,4 +1,4 @@
-package life.qbic.data_access.rest.security;
+package life.qbic.data_download.rest.security;
 
 import java.util.Collections;
 import java.util.Objects;

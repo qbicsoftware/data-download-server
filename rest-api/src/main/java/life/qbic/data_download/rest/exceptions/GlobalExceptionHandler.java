@@ -11,6 +11,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
 
 /**
  * The global exception handler. This exception handler takes effect after authentication and
@@ -32,7 +33,8 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(value = GlobalException.class)
   public ResponseEntity<String> globalException(GlobalException globalException) {
     log.error(globalException.getMessage(), globalException);
-    UserFriendlyErrorMessage errorMessage = errorMessageTranslationService.translate(globalException);
+    UserFriendlyErrorMessage errorMessage = errorMessageTranslationService.translate(
+        globalException);
     HttpStatusCode status = switch (globalException.errorCode()) {
       case GENERAL -> HttpStatus.INTERNAL_SERVER_ERROR;
       case MEASUREMENT_NOT_FOUND -> HttpStatus.NOT_FOUND;
@@ -42,6 +44,7 @@ public class GlobalExceptionHandler {
         .contentType(MediaType.TEXT_PLAIN)
         .body("%s\t%s".formatted(errorMessage.title(), errorMessage.message()));
   }
+
   @ExceptionHandler(value = Exception.class)
   public ResponseEntity<String> unknownException(Exception e) {
     log.error(e.getMessage(), e);

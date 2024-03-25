@@ -1,4 +1,4 @@
-package life.qbic.data_access.rest.security.jpa.token;
+package life.qbic.data_download.rest.security.jpa.token;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

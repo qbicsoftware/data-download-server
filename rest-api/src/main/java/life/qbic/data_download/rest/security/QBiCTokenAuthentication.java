@@ -1,8 +1,8 @@
-package life.qbic.data_access.rest.security;
+package life.qbic.data_download.rest.security;
 
 import java.util.Collection;
 import java.util.List;
-import life.qbic.data_access.rest.security.jpa.user.QBiCUserDetails;
+import life.qbic.data_download.rest.security.jpa.user.QBiCUserDetails;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 

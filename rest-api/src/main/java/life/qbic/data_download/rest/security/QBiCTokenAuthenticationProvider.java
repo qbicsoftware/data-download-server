@@ -1,11 +1,11 @@
-package life.qbic.data_access.rest.security;
+package life.qbic.data_download.rest.security;
 
 import static java.util.Objects.requireNonNull;
 
-import life.qbic.data_access.rest.security.jpa.token.EncodedAccessToken;
-import life.qbic.data_access.rest.security.jpa.token.EncodedAccessTokenRepository;
-import life.qbic.data_access.rest.security.jpa.user.QBiCUserDetails;
-import life.qbic.data_access.rest.security.jpa.user.UserDetailsRepository;
+import life.qbic.data_download.rest.security.jpa.token.EncodedAccessToken;
+import life.qbic.data_download.rest.security.jpa.token.EncodedAccessTokenRepository;
+import life.qbic.data_download.rest.security.jpa.user.QBiCUserDetails;
+import life.qbic.data_download.rest.security.jpa.user.UserDetailsRepository;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.CredentialsExpiredException;

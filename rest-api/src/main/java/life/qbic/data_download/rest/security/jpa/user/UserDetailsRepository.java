@@ -1,4 +1,4 @@
-package life.qbic.data_access.rest.security.jpa.user;
+package life.qbic.data_download.rest.security.jpa.user;
 
 import java.util.Optional;
 import org.springframework.data.repository.CrudRepository;
