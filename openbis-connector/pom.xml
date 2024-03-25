@@ -8,7 +8,7 @@
 
   <parent>
     <groupId>life.qbic</groupId>
-    <artifactId>data-access-server</artifactId>
+    <artifactId>data-download-server</artifactId>
     <version>1.0-SNAPSHOT</version>
   </parent>
 
@@ -87,7 +87,7 @@
         <configuration>
           <archive>
             <manifestEntries>
-              <Automatic-Module-Name>${project.groupId}.data_access.openbis.connector</Automatic-Module-Name>
+              <Automatic-Module-Name>${project.groupId}.data_download.openbis.connector</Automatic-Module-Name>
             </manifestEntries>
           </archive>
         </configuration>
