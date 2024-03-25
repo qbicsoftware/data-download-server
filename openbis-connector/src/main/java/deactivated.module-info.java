@@ -1,5 +1,5 @@
-//import life.qbic.data_access.measurements.api.MeasurementDataReader;
-//import life.qbic.data_access.openbis.DatasetFileStreamReaderImpl;
+//import life.qbic.data_download.measurements.api.MeasurementDataReader;
+//import life.qbic.data_download.openbis.DatasetFileStreamReaderImpl;
 //
 ///**
 // * TODO!
@@ -9,8 +9,8 @@
 // *
 // * @since <version tag>
 // */
-//module life.qbic.data_access.openbis {
-//  requires life.qbic.data_access.measurements;
+//module life.qbic.data_download.openbis {
+//  requires life.qbic.data_download.measurements;
 //  requires spring.context;
 //  requires spring.beans;
 //  requires org.slf4j;
