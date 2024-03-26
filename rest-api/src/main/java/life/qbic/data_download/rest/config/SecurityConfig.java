@@ -82,11 +82,13 @@ public class SecurityConfig {
         .authorizeHttpRequests(authorizedRequest ->
             authorizedRequest
                 .requestMatchers("/download/measurements/**")
-                .authenticated());
+                .authenticated()
+        );
 //                .access(new WebExpressionAuthorizationManager("hasPermission(//TODO)")));
 
     return http.build();
   }
+
 
   @Bean
   public WebSecurityCustomizer webSecurityCustomizer() {
