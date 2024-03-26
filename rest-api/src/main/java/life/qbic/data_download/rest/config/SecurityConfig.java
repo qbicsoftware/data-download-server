@@ -17,7 +17,6 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
 /**
  * The security config setting up endpoint security for the controllers.
@@ -28,12 +27,18 @@ public class SecurityConfig {
 
   private final EncodedAccessTokenRepository encodedAccessTokenRepository;
   private final UserDetailsRepository userDetailsRepository;
+  private final String[] ignoredEndpoints = {
+      "/v3/api-docs/**",
+      "/swagger-ui/**",
+      "/swagger-ui.html"
+  };
 
   public SecurityConfig(EncodedAccessTokenRepository encodedAccessTokenRepository,
       UserDetailsRepository userDetailsRepository) {
     this.encodedAccessTokenRepository = encodedAccessTokenRepository;
     this.userDetailsRepository = userDetailsRepository;
   }
+
 
   @Bean("accessTokenEncoder")
   public TokenEncoder tokenEncoder() {
@@ -68,10 +73,7 @@ public class SecurityConfig {
     http
         .authorizeHttpRequests(authorizedRequest ->
             authorizedRequest
-                .requestMatchers(
-                    AntPathRequestMatcher.antMatcher("/v3/api-docs/**"),
-                    AntPathRequestMatcher.antMatcher("/swagger-ui/**"),
-                    AntPathRequestMatcher.antMatcher("/swagger-ui.html"))
+                .requestMatchers(ignoredEndpoints)
                 .permitAll())
 //        //require https
 //        .requiresChannel(channel -> channel.anyRequest().requiresSecure())
@@ -82,15 +84,12 @@ public class SecurityConfig {
                 .requestMatchers("/download/measurements/**")
                 .authenticated());
 //                .access(new WebExpressionAuthorizationManager("hasPermission(//TODO)")));
-    ;
 
     return http.build();
   }
 
   @Bean
   public WebSecurityCustomizer webSecurityCustomizer() {
-    return web -> web.ignoring().requestMatchers(
-        "/swagger-ui/**", "/v3/api-docs/**", "/error"
-    );
+    return web -> web.ignoring().requestMatchers(ignoredEndpoints);
   }
 }
