@@ -16,8 +16,11 @@ import life.qbic.data_download.measurements.api.MeasurementDataReader;
 public class DatasetFileStreamReaderImpl implements MeasurementDataReader {
 
   private DataSetFileDownloadReader dataSetFileDownloadReader;
-  public DatasetFileStreamReaderImpl() {
+  private final String ignoredPrefix;
+
+  public DatasetFileStreamReaderImpl(String ignoredPrefix) {
     dataSetFileDownloadReader = null;
+    this.ignoredPrefix = Optional.ofNullable(ignoredPrefix).orElse("");
   }
 
 
@@ -51,7 +54,7 @@ public class DatasetFileStreamReaderImpl implements MeasurementDataReader {
         .toEpochMilli() : -1;
     long lastModifiedMillis = nonNull(dataStore) ? dataStore.getModificationDate().toInstant()
         .toEpochMilli() : -1;
-    FileInfo fileInfo = new FileInfo(fileDownload.getDataSetFile().getPath(),
+    FileInfo fileInfo = new FileInfo(fileDownload.getDataSetFile().getPath().replaceFirst(ignoredPrefix, ""),
         fileDownload.getDataSetFile().getFileLength(),
         Integer.toUnsignedLong(fileDownload.getDataSetFile().getChecksumCRC32()),
         creationMillis,
