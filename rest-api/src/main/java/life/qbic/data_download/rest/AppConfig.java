@@ -35,8 +35,9 @@ public class AppConfig {
   }
 
   @Bean("measurementDataReader")
-  public MeasurementDataReader measurementDataReader() {
-    return new DatasetFileStreamReaderImpl();
+  public MeasurementDataReader measurementDataReader(
+      @Value("${openbis.filename.ignored-prefix}") String ignoredPathPrefix) {
+    return new DatasetFileStreamReaderImpl(ignoredPathPrefix);
   }
 
   @Bean("errorMessageSource")
