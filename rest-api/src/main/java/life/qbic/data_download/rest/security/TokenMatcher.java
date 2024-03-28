@@ -3,15 +3,7 @@ package life.qbic.data_download.rest.security;
 /**
  * Encodes tokens and checks for matches
  */
-public interface TokenEncoder {
-
-  /**
-   * Encodes a token
-   *
-   * @param token the token to encode
-   * @return an encoded representation of the token
-   */
-  String encode(char[] token);
+public interface TokenMatcher {
 
   /**
    * Checks whether the provided token matches the encoded token

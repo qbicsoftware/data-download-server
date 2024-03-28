@@ -19,14 +19,14 @@ import org.springframework.security.core.AuthenticationException;
  */
 public class QBiCTokenAuthenticationProvider implements AuthenticationProvider {
 
-  private final TokenEncoder tokenEncoder;
+  private final TokenMatcher tokenMatcher;
   private final EncodedAccessTokenRepository encodedAccessTokenRepository;
   private final UserDetailsRepository userDetailsRepository;
 
-  public QBiCTokenAuthenticationProvider(TokenEncoder tokenEncoder,
+  public QBiCTokenAuthenticationProvider(TokenMatcher tokenMatcher,
       EncodedAccessTokenRepository encodedAccessTokenRepository,
       UserDetailsRepository userDetailsRepository) {
-    this.tokenEncoder = requireNonNull(tokenEncoder, "tokenEncoder must not be null");
+    this.tokenMatcher = requireNonNull(tokenMatcher, "tokenMatcher must not be null");
     this.encodedAccessTokenRepository = requireNonNull(encodedAccessTokenRepository,
         "encodedAccessTokenRepository must not be null");
     this.userDetailsRepository = requireNonNull(userDetailsRepository,
@@ -39,7 +39,7 @@ public class QBiCTokenAuthenticationProvider implements AuthenticationProvider {
       String token = authenticationRequest.getToken();
       EncodedAccessToken encodedAccessToken = encodedAccessTokenRepository.findAll()
           .parallelStream()
-          .filter(storedToken -> tokenEncoder.matches(token.toCharArray(),
+          .filter(storedToken -> tokenMatcher.matches(token.toCharArray(),
               storedToken.getAccessToken()))
           .findAny().orElseThrow(
               () -> new BadCredentialsException("not a valid token")

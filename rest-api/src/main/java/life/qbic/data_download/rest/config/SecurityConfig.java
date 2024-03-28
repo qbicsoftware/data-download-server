@@ -2,8 +2,8 @@ package life.qbic.data_download.rest.config;
 
 import life.qbic.data_download.rest.security.QBiCTokenAuthenticationFilter;
 import life.qbic.data_download.rest.security.QBiCTokenAuthenticationProvider;
-import life.qbic.data_download.rest.security.QBiCTokenEncoder;
-import life.qbic.data_download.rest.security.TokenEncoder;
+import life.qbic.data_download.rest.security.QBiCTokenMatcher;
+import life.qbic.data_download.rest.security.TokenMatcher;
 import life.qbic.data_download.rest.security.jpa.token.EncodedAccessTokenRepository;
 import life.qbic.data_download.rest.security.jpa.user.UserDetailsRepository;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -41,14 +41,14 @@ public class SecurityConfig {
 
 
   @Bean("accessTokenEncoder")
-  public TokenEncoder tokenEncoder() {
-    return new QBiCTokenEncoder();
+  public TokenMatcher tokenEncoder() {
+    return new QBiCTokenMatcher();
   }
 
   @Bean("tokenAuthenticationProvider")
   public QBiCTokenAuthenticationProvider authenticationProvider(
-      @Qualifier("accessTokenEncoder") TokenEncoder tokenEncoder) {
-    return new QBiCTokenAuthenticationProvider(tokenEncoder, encodedAccessTokenRepository, userDetailsRepository);
+      @Qualifier("accessTokenEncoder") TokenMatcher tokenMatcher) {
+    return new QBiCTokenAuthenticationProvider(tokenMatcher, encodedAccessTokenRepository, userDetailsRepository);
   }
 
   @Bean("tokenAuthenticationManager")
