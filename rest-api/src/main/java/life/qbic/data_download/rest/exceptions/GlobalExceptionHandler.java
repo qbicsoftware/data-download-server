@@ -2,6 +2,10 @@ package life.qbic.data_download.rest.exceptions;
 
 import static org.slf4j.LoggerFactory.getLogger;
 
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import life.qbic.data_download.rest.exceptions.ErrorMessageTranslationService.UserFriendlyErrorMessage;
 import org.slf4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,8 +13,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
 
 /**
  * The global exception handler. This exception handler takes effect after authentication and
@@ -32,7 +41,8 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(value = GlobalException.class)
   public ResponseEntity<String> globalException(GlobalException globalException) {
     log.error(globalException.getMessage(), globalException);
-    UserFriendlyErrorMessage errorMessage = errorMessageTranslationService.translate(globalException);
+    UserFriendlyErrorMessage errorMessage = errorMessageTranslationService.translate(
+        globalException);
     HttpStatusCode status = switch (globalException.errorCode()) {
       case GENERAL -> HttpStatus.INTERNAL_SERVER_ERROR;
       case MEASUREMENT_NOT_FOUND -> HttpStatus.NOT_FOUND;
@@ -42,6 +52,8 @@ public class GlobalExceptionHandler {
         .contentType(MediaType.TEXT_PLAIN)
         .body("%s\t%s".formatted(errorMessage.title(), errorMessage.message()));
   }
+
+
   @ExceptionHandler(value = Exception.class)
   public ResponseEntity<String> unknownException(Exception e) {
     log.error(e.getMessage(), e);

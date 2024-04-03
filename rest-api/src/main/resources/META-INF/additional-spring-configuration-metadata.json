@@ -1,0 +1,8 @@
+{
+  "properties": [
+    {
+      "name": "openbis.filename.ignored-prefix",
+      "type": "java.lang.String",
+      "description": "A prefix that is ignored in the filepaths. Defaults to original/"
+  }
+] }

@@ -6,6 +6,7 @@ import ch.ethz.sis.openbis.generic.asapi.v3.dto.datastore.DataStore;
 import ch.ethz.sis.openbis.generic.dssapi.v3.dto.datasetfile.download.DataSetFileDownload;
 import ch.ethz.sis.openbis.generic.dssapi.v3.dto.datasetfile.download.DataSetFileDownloadReader;
 import java.io.InputStream;
+import java.util.Optional;
 import life.qbic.data_download.measurements.api.DataFile;
 import life.qbic.data_download.measurements.api.FileInfo;
 import life.qbic.data_download.measurements.api.MeasurementDataReader;
@@ -16,8 +17,11 @@ import life.qbic.data_download.measurements.api.MeasurementDataReader;
 public class DatasetFileStreamReaderImpl implements MeasurementDataReader {
 
   private DataSetFileDownloadReader dataSetFileDownloadReader;
-  public DatasetFileStreamReaderImpl() {
+  private final String ignoredPrefix;
+
+  public DatasetFileStreamReaderImpl(String ignoredPrefix) {
     dataSetFileDownloadReader = null;
+    this.ignoredPrefix = Optional.ofNullable(ignoredPrefix).orElse("");
   }
 
 
@@ -51,7 +55,7 @@ public class DatasetFileStreamReaderImpl implements MeasurementDataReader {
         .toEpochMilli() : -1;
     long lastModifiedMillis = nonNull(dataStore) ? dataStore.getModificationDate().toInstant()
         .toEpochMilli() : -1;
-    FileInfo fileInfo = new FileInfo(fileDownload.getDataSetFile().getPath(),
+    FileInfo fileInfo = new FileInfo(fileDownload.getDataSetFile().getPath().replaceFirst(ignoredPrefix, ""),
         fileDownload.getDataSetFile().getFileLength(),
         Integer.toUnsignedLong(fileDownload.getDataSetFile().getChecksumCRC32()),
         creationMillis,
