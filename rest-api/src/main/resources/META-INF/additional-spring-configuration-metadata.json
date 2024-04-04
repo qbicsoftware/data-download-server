@@ -4,5 +4,20 @@
       "name": "openbis.filename.ignored-prefix",
       "type": "java.lang.String",
       "description": "A prefix that is ignored in the filepaths. Defaults to original/"
-  }
-] }
+    },
+    {
+      "name": "qbic.access-management.datasource.url",
+      "type": "java.lang.String",
+      "description": "The jdbc url to the datasource from which access control information can be fetched."
+    },
+    {
+      "name": "qbic.access-management.datasource.username",
+      "type": "java.lang.String",
+      "description": "The username for the datasource from which access control information is fetched."
+    },
+    {
+      "name": "qbic.access-management.datasource.password",
+      "type": "java.lang.String",
+      "description": "The password for the datasource from which access control information is fetched."
+    }
+  ] }

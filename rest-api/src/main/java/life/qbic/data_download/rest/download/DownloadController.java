@@ -94,8 +94,9 @@ public class DownloadController {
 
   private void writeDataToStream(MeasurementId measurementId, OutputStream outputStream, MeasurementData measurementData,
       MeasurementDataReader measurementDataReader) {
-    log.info("User %s started downloading measurement %s".formatted(
-        SecurityContextHolder.getContext().getAuthentication().getName(), measurementId.id()));
+    String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
+    log.info(
+        "User %s started downloading measurement %s".formatted(currentUser, measurementId.id()));
     try (final var dataStream = measurementData.stream();
         final var zippedStream = BufferedZippingFunctions.zipInto(outputStream)) {
       measurementDataReader.open(dataStream);
@@ -108,10 +109,14 @@ public class DownloadController {
             new FileTimes(file.fileInfo().registrationMillis(), -1,
                 file.fileInfo().lastModifiedMillis()));
 
-        BufferedZippingFunctions.addToZip(zippedStream, zipEntryFileInfo, file.inputStream());
+        BufferedZippingFunctions.addToZip(zippedStream, zipEntryFileInfo, file.inputStream(), BufferedZippingFunctions.DEFAULT_BUFFER_SIZE);
       }
+      log.info(
+          "User %s finished downloading measurement %s".formatted(currentUser, measurementId.id()));
     } catch (IOException e) {
-      throw new RuntimeException(e);
+      throw new GlobalException(
+          "User %s failed downloading measurement %s. %s".formatted(currentUser, measurementId.id(),
+              e.getMessage()), e);
     }
   }
 }
