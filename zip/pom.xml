@@ -9,7 +9,7 @@
     <version>1.0-SNAPSHOT</version>
   </parent>
 
-  <groupId>life.qbic</groupId>
+  <groupId>life.qbic.data-download</groupId>
   <artifactId>zip</artifactId>
   <packaging>jar</packaging>
 
@@ -28,7 +28,7 @@
         <configuration>
           <archive>
             <manifestEntries>
-              <Automatic-Module-Name>${project.groupId}.data_download.zip</Automatic-Module-Name>
+              <Automatic-Module-Name>life.qbic.data_download.zip</Automatic-Module-Name>
             </manifestEntries>
           </archive>
         </configuration>
