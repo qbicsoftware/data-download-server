@@ -3,24 +3,29 @@
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <groupId>life.qbic.data-download</groupId>
-  <artifactId>rest-api</artifactId>
-  <version>1.0-SNAPSHOT</version>
-  <packaging>jar</packaging>
 
   <parent>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-parent</artifactId>
-    <version>3.2.4</version>
-    <relativePath/>
+    <groupId>life.qbic</groupId>
+    <artifactId>data-download-server</artifactId>
+    <version>0.1.0</version>
   </parent>
 
-  <properties>
-    <maven.compiler.source>21</maven.compiler.source>
-    <maven.compiler.target>21</maven.compiler.target>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <spring.boot.version>3.2.4</spring.boot.version>
-  </properties>
+  <groupId>life.qbic.data-download</groupId>
+  <artifactId>rest-server</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-dependencies</artifactId>
+        <version>${spring.boot.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <dependencies>
     <dependency>
@@ -57,17 +62,17 @@
     <dependency>
       <groupId>life.qbic.data-download</groupId>
       <artifactId>measurement-provider</artifactId>
-      <version>1.0-SNAPSHOT</version>
+      <version>0.1.0</version>
     </dependency>
     <dependency>
       <groupId>life.qbic.data-download</groupId>
       <artifactId>openbis-connector</artifactId>
-      <version>1.0-SNAPSHOT</version>
+      <version>0.1.0</version>
     </dependency>
     <dependency>
       <groupId>life.qbic.data-download</groupId>
       <artifactId>zip</artifactId>
-      <version>1.0-SNAPSHOT</version>
+      <version>0.1.0</version>
     </dependency>
   </dependencies>
 
@@ -132,6 +137,16 @@
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
         <version>${spring.boot.version}</version>
+        <configuration>
+          <mainClass>life.qbic.data_download.rest.DataDownloadRestServer</mainClass>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>
