@@ -1,22 +1,54 @@
 package life.qbic.data_download.rest.config;
 
+import static org.springframework.security.authorization.AuthorizationManagers.anyOf;
+
+import javax.sql.DataSource;
 import life.qbic.data_download.rest.security.QBiCTokenAuthenticationFilter;
 import life.qbic.data_download.rest.security.QBiCTokenAuthenticationProvider;
 import life.qbic.data_download.rest.security.QBiCTokenMatcher;
+import life.qbic.data_download.rest.security.RequestAuthorizationManagerFactory;
 import life.qbic.data_download.rest.security.TokenMatcher;
+import life.qbic.data_download.rest.security.acl.MeasurementMappingService;
+import life.qbic.data_download.rest.security.acl.QBiCMeasurementMappingService;
+import life.qbic.data_download.rest.security.acl.QbicPermissionEvaluator;
+import life.qbic.data_download.rest.security.jpa.measurement.NGSMeasurementRepository;
+import life.qbic.data_download.rest.security.jpa.measurement.ProteomicsMeasurementRepository;
 import life.qbic.data_download.rest.security.jpa.token.EncodedAccessTokenRepository;
 import life.qbic.data_download.rest.security.jpa.user.UserDetailsRepository;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.security.access.PermissionEvaluator;
+import org.springframework.security.access.expression.method.DefaultMethodSecurityExpressionHandler;
+import org.springframework.security.access.expression.method.MethodSecurityExpressionHandler;
+import org.springframework.security.acls.domain.AclAuthorizationStrategy;
+import org.springframework.security.acls.domain.AclAuthorizationStrategyImpl;
+import org.springframework.security.acls.domain.AuditLogger;
+import org.springframework.security.acls.domain.DefaultPermissionGrantingStrategy;
+import org.springframework.security.acls.domain.SpringCacheBasedAclCache;
+import org.springframework.security.acls.jdbc.BasicLookupStrategy;
+import org.springframework.security.acls.jdbc.JdbcMutableAclService;
+import org.springframework.security.acls.jdbc.LookupStrategy;
+import org.springframework.security.acls.model.AclCache;
+import org.springframework.security.acls.model.AclService;
+import org.springframework.security.acls.model.AuditableAccessControlEntry;
+import org.springframework.security.acls.model.MutableAclService;
+import org.springframework.security.acls.model.PermissionGrantingStrategy;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.expression.DefaultHttpSecurityExpressionHandler;
 import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
+import org.springframework.util.Assert;
 
 /**
  * The security config setting up endpoint security for the controllers.
@@ -25,19 +57,11 @@ import org.springframework.security.web.authentication.www.BasicAuthenticationFi
 @EnableWebSecurity
 public class SecurityConfig {
 
-  private final EncodedAccessTokenRepository encodedAccessTokenRepository;
-  private final UserDetailsRepository userDetailsRepository;
   private final String[] ignoredEndpoints = {
       "/v3/api-docs/**",
       "/swagger-ui/**",
       "/swagger-ui.html"
   };
-
-  public SecurityConfig(EncodedAccessTokenRepository encodedAccessTokenRepository,
-      UserDetailsRepository userDetailsRepository) {
-    this.encodedAccessTokenRepository = encodedAccessTokenRepository;
-    this.userDetailsRepository = userDetailsRepository;
-  }
 
 
   @Bean("accessTokenEncoder")
@@ -47,8 +71,11 @@ public class SecurityConfig {
 
   @Bean("tokenAuthenticationProvider")
   public QBiCTokenAuthenticationProvider authenticationProvider(
-      @Qualifier("accessTokenEncoder") TokenMatcher tokenMatcher) {
-    return new QBiCTokenAuthenticationProvider(tokenMatcher, encodedAccessTokenRepository, userDetailsRepository);
+      @Qualifier("accessTokenEncoder") TokenMatcher tokenMatcher,
+      EncodedAccessTokenRepository encodedAccessTokenRepository,
+      UserDetailsRepository userDetailsRepository) {
+    return new QBiCTokenAuthenticationProvider(tokenMatcher, encodedAccessTokenRepository,
+        userDetailsRepository);
   }
 
   @Bean("tokenAuthenticationManager")
@@ -65,11 +92,12 @@ public class SecurityConfig {
   }
 
 
-
   @Bean
   public SecurityFilterChain apiFilterChain(HttpSecurity http,
       @Qualifier("tokenAuthenticationProvider") QBiCTokenAuthenticationProvider authenticationProvider,
-      @Qualifier("tokenAuthenticationFilter") QBiCTokenAuthenticationFilter tokenAuthenticationFilter) throws Exception {
+      @Qualifier("tokenAuthenticationFilter") QBiCTokenAuthenticationFilter tokenAuthenticationFilter,
+      @Qualifier("authorizationManagerFactory") RequestAuthorizationManagerFactory requestAuthorizationManagerFactory
+  ) throws Exception {
     http
         .authorizeHttpRequests(authorizedRequest ->
             authorizedRequest
@@ -81,17 +109,126 @@ public class SecurityConfig {
         .addFilterAt(tokenAuthenticationFilter, BasicAuthenticationFilter.class)
         .authorizeHttpRequests(authorizedRequest ->
             authorizedRequest
-                .requestMatchers("/download/measurements/**")
-                .authenticated()
-        );
-//                .access(new WebExpressionAuthorizationManager("hasPermission(//TODO)")));
+                .requestMatchers("/download/measurements/{measurementId}")
+                .access(anyOf(
+                    requestAuthorizationManagerFactory.spel(
+                        "hasPermission(#measurementId, 'qbic.measurement', 'READ')")
+                )));
 
     return http.build();
   }
 
+  @Bean("authorizationManagerFactory")
+  public RequestAuthorizationManagerFactory authorizationManagerFactory(
+      @Qualifier("permissionEvaluator") PermissionEvaluator permissionEvaluator) {
+
+    DefaultHttpSecurityExpressionHandler expressionHandler = new DefaultHttpSecurityExpressionHandler();
+    expressionHandler.setPermissionEvaluator(permissionEvaluator);
+    return new RequestAuthorizationManagerFactory(expressionHandler);
+  }
 
   @Bean
   public WebSecurityCustomizer webSecurityCustomizer() {
     return web -> web.ignoring().requestMatchers(ignoredEndpoints);
+  }
+
+  // ACL
+  @Bean("auditLogger")
+  public AuditLogger auditLogger() {
+    var logger = LoggerFactory.getLogger(SecurityConfig.class);
+    return (granted, ace) -> {
+      Assert.notNull(ace, "AccessControlEntry required");
+      if (ace instanceof AuditableAccessControlEntry auditableAce) {
+        if (!granted) {
+          logger.info("DENIED due to ACE: %s".formatted(ace));
+        } else {
+          auditableAce.isAuditSuccess();
+        }
+      }
+    };
+  }
+
+  @Bean("aclAuthorizationStrategy")
+  public AclAuthorizationStrategy aclAuthorizationStrategy() {
+    return new AclAuthorizationStrategyImpl(
+        new SimpleGrantedAuthority("acl:change-owner"), //give this to ROLE_ADMIN
+        new SimpleGrantedAuthority("acl:change-audit"), // give this to ROLE_ADMIN
+        new SimpleGrantedAuthority("acl:change-access")
+        //give this to ROLE_ADMIN, ROLE_PROJECT_MANAGER
+    );
+  }
+
+    @Bean("permissionGrantingStrategy")
+    public PermissionGrantingStrategy permissionGrantingStrategy() {
+      return new DefaultPermissionGrantingStrategy(auditLogger());
+    }
+
+  @Bean
+  protected AclCache aclCache() {
+    CacheManager cacheManager = new ConcurrentMapCacheManager();
+    return new SpringCacheBasedAclCache(
+        cacheManager.getCache("acl_cache"),
+        permissionGrantingStrategy(),
+        aclAuthorizationStrategy());
+  }
+
+  @Bean("securityDataSource")
+  public DataSource dataSource(
+      @Value("${qbic.access-management.datasource.url}") String url,
+      @Value("${qbic.access-management.datasource.username}") String name,
+      @Value("${qbic.access-management.datasource.password}") String password) {
+    var ds = new DriverManagerDataSource();
+    ds.setUrl(url);
+    ds.setUsername(name);
+    ds.setPassword(password);
+    return ds;
+  }
+
+  @Bean("idSupportingLookupStrategy")
+  public LookupStrategy lookupStrategy(
+      @Qualifier("securityDataSource") DataSource dataSource) {
+    BasicLookupStrategy basicLookupStrategy = new BasicLookupStrategy(
+        dataSource,
+        aclCache(),
+        aclAuthorizationStrategy(),
+        auditLogger()
+    );
+    basicLookupStrategy.setAclClassIdSupported(true);
+    return basicLookupStrategy;
+  }
+
+
+  @Bean("aclService")
+  public MutableAclService mutableAclService(
+      @Qualifier("securityDataSource") DataSource dataSource,
+      @Qualifier("idSupportingLookupStrategy") LookupStrategy lookupStrategy) {
+    JdbcMutableAclService jdbcMutableAclService = new JdbcMutableAclService(dataSource,
+        lookupStrategy, aclCache());
+    // allow for non-long type ids
+    jdbcMutableAclService.setAclClassIdSupported(true);
+
+    return jdbcMutableAclService;
+  }
+
+  @Bean("measurementMappingService")
+  public MeasurementMappingService measurementMappingService(
+      ProteomicsMeasurementRepository proteomicsMeasurementRepository,
+      NGSMeasurementRepository ngsMeasurementRepository) {
+    return new QBiCMeasurementMappingService(ngsMeasurementRepository, proteomicsMeasurementRepository);
+  }
+
+  @Bean("permissionEvaluator")
+  public PermissionEvaluator permissionEvaluator(
+      @Qualifier("aclService") AclService aclService,
+      @Qualifier("measurementMappingService") MeasurementMappingService measurementMappingService) {
+    return new QbicPermissionEvaluator(aclService, measurementMappingService);
+  }
+
+  @Bean
+  public MethodSecurityExpressionHandler defaultMethodSecurityExpressionHandler(
+      @Qualifier("permissionEvaluator") PermissionEvaluator permissionEvaluator) {
+    var expressionHandler = new DefaultMethodSecurityExpressionHandler();
+    expressionHandler.setPermissionEvaluator(permissionEvaluator);
+    return expressionHandler;
   }
 }

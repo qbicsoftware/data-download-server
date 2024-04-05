@@ -17,8 +17,7 @@ public class BufferedZippingFunctions {
   }
 
 
-  private static final int DEFAULT_BUFFER_SIZE = 1024; //1 KB buffer
-
+  public static final int DEFAULT_BUFFER_SIZE = 1024; //1 KB buffer
 
   public static ZipOutputStream zipInto(OutputStream outputStream) {
     return zipInto(outputStream, ZipOutputStream.STORED);
@@ -33,11 +32,6 @@ public class BufferedZippingFunctions {
     ZipOutputStream zipOutputStream = new ZipOutputStream(outputStream);
     zipOutputStream.setMethod(method);
     return zipOutputStream;
-  }
-
-  public static void addToZip(ZipOutputStream zipOutputStream, FileInfo fileInfo,
-      InputStream inputStream) {
-    addToZip(zipOutputStream, fileInfo, inputStream, DEFAULT_BUFFER_SIZE);
   }
 
   public static void addToZip(ZipOutputStream zipOutputStream, FileInfo fileInfo,

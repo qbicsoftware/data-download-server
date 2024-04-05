@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.UUID;
 import life.qbic.data_download.measurements.api.DataFile;
 import life.qbic.data_download.measurements.api.MeasurementData;
 import life.qbic.data_download.measurements.api.MeasurementDataProvider;
@@ -34,29 +35,21 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
-/**
- * TODO!
- * <b>short description</b>
- *
- * <p>detailed description</p>
- *
- * @since <version tag>
- */
 @RestController
 @RequestMapping(path = "/download")
 public class DownloadController {
 
   private final MeasurementDataProvider measurementDataProvider;
-  private final MeasurementDataReader measurementDataReader;
+  private final MeasurementDataReaderFactory measurementDataReaderFactory;
 
   private static final Logger log = getLogger(DownloadController.class);
 
   public DownloadController(
       @Qualifier("measurementDataProvider") MeasurementDataProvider measurementDataProvider,
-      @Qualifier("measurementDataReader") MeasurementDataReader measurementDataReader
+      @Qualifier("measurementDataReaderFactory") MeasurementDataReaderFactory measurementDataReaderFactory
   ) {
     this.measurementDataProvider = measurementDataProvider;
-    this.measurementDataReader = measurementDataReader;
+    this.measurementDataReaderFactory = measurementDataReaderFactory;
   }
 
 
@@ -69,21 +62,29 @@ public class DownloadController {
   })
   public ResponseEntity<StreamingResponseBody> downloadMeasurement(
       @PathVariable("measurementId") String measurementId) {
+    String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
+    var requestId = "downloadMeasurement-" + UUID.randomUUID();
+    log.info("request %s: user %s requests measurement %s".formatted(requestId, currentUser,
+        measurementId));
     var measurementIdentifier = new MeasurementId(measurementId);
     MeasurementData measurementData = measurementDataProvider.loadData(measurementIdentifier);
     if (measurementData == null) {
-      throw new GlobalException(ErrorCode.MEASUREMENT_NOT_FOUND, ErrorParameters.of(measurementId));
+      throw new GlobalException("request %s failed.".formatted(requestId),
+          ErrorCode.MEASUREMENT_NOT_FOUND, ErrorParameters.of(measurementId));
     }
-
     String outputFileName =
         measurementId + "-"
             + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd.hhmmss"))
             + ".zip";
 
-    StreamingResponseBody responseBody = outputStream -> writeDataToStream(measurementIdentifier,
-        outputStream,
-        measurementData,
-        measurementDataReader);
+    StreamingResponseBody responseBody = outputStream -> {
+      log.info("request %s: user %s started downloading measurement %s".formatted(requestId, currentUser, measurementIdentifier.id()));
+      writeDataToStream(measurementIdentifier,
+          outputStream,
+          measurementData,
+          measurementDataReaderFactory.getMeasurementDataReader());
+      log.info("request %s: user %s finished downloading measurement %s".formatted(requestId, currentUser, measurementIdentifier.id()));
+    };
     return ResponseEntity.ok()
         .contentType(MediaType.APPLICATION_OCTET_STREAM)
         .header("Accept-Charset", "UTF-8")
@@ -94,8 +95,7 @@ public class DownloadController {
 
   private void writeDataToStream(MeasurementId measurementId, OutputStream outputStream, MeasurementData measurementData,
       MeasurementDataReader measurementDataReader) {
-    log.info("User %s started downloading measurement %s".formatted(
-        SecurityContextHolder.getContext().getAuthentication().getName(), measurementId.id()));
+    String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
     try (final var dataStream = measurementData.stream();
         final var zippedStream = BufferedZippingFunctions.zipInto(outputStream)) {
       measurementDataReader.open(dataStream);
@@ -108,10 +108,12 @@ public class DownloadController {
             new FileTimes(file.fileInfo().registrationMillis(), -1,
                 file.fileInfo().lastModifiedMillis()));
 
-        BufferedZippingFunctions.addToZip(zippedStream, zipEntryFileInfo, file.inputStream());
+        BufferedZippingFunctions.addToZip(zippedStream, zipEntryFileInfo, file.inputStream(), BufferedZippingFunctions.DEFAULT_BUFFER_SIZE);
       }
     } catch (IOException e) {
-      throw new RuntimeException(e);
+      throw new GlobalException(
+          "User %s failed downloading measurement %s. %s".formatted(currentUser, measurementId.id(),
+              e.getMessage()), e);
     }
   }
 }
