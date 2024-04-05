@@ -23,10 +23,12 @@ import life.qbic.data_download.rest.exceptions.GlobalException.ErrorParameters;
 import life.qbic.data_download.util.zip.api.FileInfo;
 import life.qbic.data_download.util.zip.api.FileTimes;
 import life.qbic.data_download.util.zip.manipulation.BufferedZippingFunctions;
+import org.apache.http.annotation.ThreadSafe;
 import org.slf4j.Logger;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -47,16 +49,16 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 public class DownloadController {
 
   private final MeasurementDataProvider measurementDataProvider;
-  private final MeasurementDataReader measurementDataReader;
+  private final MeasurementDataReaderFactory measurementDataReaderFactory;
 
   private static final Logger log = getLogger(DownloadController.class);
 
   public DownloadController(
       @Qualifier("measurementDataProvider") MeasurementDataProvider measurementDataProvider,
-      @Qualifier("measurementDataReader") MeasurementDataReader measurementDataReader
+      @Qualifier("measurementDataReaderFactory") MeasurementDataReaderFactory measurementDataReaderFactory
   ) {
     this.measurementDataProvider = measurementDataProvider;
-    this.measurementDataReader = measurementDataReader;
+    this.measurementDataReaderFactory = measurementDataReaderFactory;
   }
 
 
@@ -83,7 +85,7 @@ public class DownloadController {
     StreamingResponseBody responseBody = outputStream -> writeDataToStream(measurementIdentifier,
         outputStream,
         measurementData,
-        measurementDataReader);
+        measurementDataReaderFactory.getMeasurementDataReader());
     return ResponseEntity.ok()
         .contentType(MediaType.APPLICATION_OCTET_STREAM)
         .header("Accept-Charset", "UTF-8")

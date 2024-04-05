@@ -1,10 +1,10 @@
 package life.qbic.data_download.rest;
 
 import java.util.List;
-import life.qbic.data_download.measurements.api.MeasurementDataReader;
 import life.qbic.data_download.openbis.DatasetFileStreamReaderImpl;
 import life.qbic.data_download.openbis.OpenBisConnector;
 import life.qbic.data_download.openbis.SessionFactory;
+import life.qbic.data_download.rest.download.MeasurementDataReaderFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.MessageSource;
@@ -34,12 +34,13 @@ public class AppConfig {
     return new SessionFactory(applicationServerUrl, userName, password);
   }
 
-  @Bean("measurementDataReader")
-  public MeasurementDataReader measurementDataReader(
-      @Value("${openbis.filename.ignored-prefix}") String ignoredPathPrefix) {
-    return new DatasetFileStreamReaderImpl(ignoredPathPrefix);
-  }
 
+  @Bean("measurementDataReaderFactory")
+  public MeasurementDataReaderFactory measurementDataReaderFactory(
+      @Value("${openbis.filename.ignored-prefix}") String ignoredPathPrefix) {
+    return () -> new DatasetFileStreamReaderImpl(ignoredPathPrefix);
+
+  }
   @Bean("errorMessageSource")
   public MessageSource errorMessageSource() {
     ReloadableResourceBundleMessageSource messageSource = new ReloadableResourceBundleMessageSource();
