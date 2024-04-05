@@ -1,7 +1,6 @@
 package life.qbic.data_download.rest.config;
 
 import java.time.Duration;
-import java.util.concurrent.Executor;
 import org.springframework.aop.interceptor.AsyncUncaughtExceptionHandler;
 import org.springframework.aop.interceptor.SimpleAsyncUncaughtExceptionHandler;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -22,7 +21,7 @@ public class AsyncDownloadConfig implements AsyncConfigurer {
 
   @Override
   @Bean("taskExecutor")
-  public Executor getAsyncExecutor() {
+  public AsyncTaskExecutor getAsyncExecutor() {
     ThreadPoolTaskExecutor threadPoolTaskExecutor = new ThreadPoolTaskExecutor();
     threadPoolTaskExecutor.setCorePoolSize(2);
     threadPoolTaskExecutor.setMaxPoolSize(2);
