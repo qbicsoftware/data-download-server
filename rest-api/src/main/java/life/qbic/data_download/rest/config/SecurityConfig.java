@@ -140,7 +140,7 @@ public class SecurityConfig {
       Assert.notNull(ace, "AccessControlEntry required");
       if (ace instanceof AuditableAccessControlEntry auditableAce) {
         if (!granted) {
-            logger.info("DENIED due to ACE: " + ace);
+          logger.info("DENIED due to ACE: %s".formatted(ace));
         } else {
           auditableAce.isAuditSuccess();
         }
