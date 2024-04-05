@@ -31,12 +31,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 @RestController
-@RequestMapping(path = "/download")
 public class DownloadController {
 
   private final MeasurementDataProvider measurementDataProvider;
@@ -58,7 +56,8 @@ public class DownloadController {
   @Parameter(name = "measurementId", required = true, description = "The identifier of the measurement to download")
   @ApiResponses(value = {
       @ApiResponse(responseCode = "200", description = "successful operation, the measurement is retrieved asynchronously", content = @Content(schema = @Schema(implementation = Void.class))),
-      @ApiResponse(responseCode = "404", description = "measurement not found", content = @Content(schema = @Schema(implementation = Void.class)))
+      @ApiResponse(responseCode = "403", description = "forbidden, you do not have access to this resource", content = @Content(schema = @Schema(implementation = Void.class))),
+      @ApiResponse(responseCode = "404", description = "measurement not found", content = @Content(schema = @Schema(implementation = Void.class))),
   })
   public ResponseEntity<StreamingResponseBody> downloadMeasurement(
       @PathVariable("measurementId") String measurementId) {

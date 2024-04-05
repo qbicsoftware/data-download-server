@@ -43,7 +43,6 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.expression.DefaultHttpSecurityExpressionHandler;
@@ -109,7 +108,7 @@ public class SecurityConfig {
         .addFilterAt(tokenAuthenticationFilter, BasicAuthenticationFilter.class)
         .authorizeHttpRequests(authorizedRequest ->
             authorizedRequest
-                .requestMatchers("/download/measurements/{measurementId}")
+                .requestMatchers("/measurements/{measurementId}")
                 .access(anyOf(
                     requestAuthorizationManagerFactory.spel(
                         "hasPermission(#measurementId, 'qbic.measurement', 'READ')")
@@ -125,11 +124,6 @@ public class SecurityConfig {
     DefaultHttpSecurityExpressionHandler expressionHandler = new DefaultHttpSecurityExpressionHandler();
     expressionHandler.setPermissionEvaluator(permissionEvaluator);
     return new RequestAuthorizationManagerFactory(expressionHandler);
-  }
-
-  @Bean
-  public WebSecurityCustomizer webSecurityCustomizer() {
-    return web -> web.ignoring().requestMatchers(ignoredEndpoints);
   }
 
   // ACL
