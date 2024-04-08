@@ -6,11 +6,11 @@
 
   <parent>
     <groupId>life.qbic</groupId>
-    <artifactId>data-access-server</artifactId>
+    <artifactId>data-download-server</artifactId>
     <version>0.1.0</version>
   </parent>
 
-  <groupId>life.qbic.data-access</groupId>
+  <groupId>life.qbic.data-download</groupId>
   <artifactId>openbis-connector</artifactId>
   <packaging>jar</packaging>
   <version>0.1.0</version>
@@ -64,7 +64,7 @@
       <classifier>r1700646105</classifier>
     </dependency>
     <dependency>
-      <groupId>life.qbic.data-access</groupId>
+      <groupId>life.qbic.data-download</groupId>
       <artifactId>measurement-provider</artifactId>
       <version>0.1.0</version>
     </dependency>
@@ -84,7 +84,7 @@
         <configuration>
           <archive>
             <manifestEntries>
-              <Automatic-Module-Name>life.qbic.data_access.openbis.connector</Automatic-Module-Name>
+              <Automatic-Module-Name>life.qbic.data_download.openbis.connector</Automatic-Module-Name>
             </manifestEntries>
           </archive>
         </configuration>

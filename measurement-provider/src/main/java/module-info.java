@@ -1,3 +1,3 @@
-module life.qbic.data_access.measurements {
-  exports life.qbic.data_access.measurements.api;
+module life.qbic.data_download.measurements {
+  exports life.qbic.data_download.measurements.api;
 }

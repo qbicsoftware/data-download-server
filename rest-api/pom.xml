@@ -6,15 +6,14 @@
 
   <parent>
     <groupId>life.qbic</groupId>
-    <artifactId>data-access-server</artifactId>
+    <artifactId>data-download-server</artifactId>
     <version>0.1.0</version>
   </parent>
 
-  <groupId>life.qbic.data-access</groupId>
+  <groupId>life.qbic.data-download</groupId>
   <artifactId>rest-server</artifactId>
   <version>0.1.0</version>
   <packaging>jar</packaging>
-
 
   <dependencyManagement>
     <dependencies>
@@ -39,27 +38,103 @@
       <scope>test</scope>
     </dependency>
     <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-security</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.security</groupId>
+      <artifactId>spring-security-acl</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.mysql</groupId>
+      <artifactId>mysql-connector-j</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>mysql</groupId>
+      <artifactId>mysql-connector-java</artifactId>
+      <version>8.0.33</version>
+    </dependency>
+    <dependency>
       <groupId>org.springdoc</groupId>
       <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
       <version>2.3.0</version>
     </dependency>
     <dependency>
-      <groupId>life.qbic.data-access</groupId>
+      <groupId>life.qbic.data-download</groupId>
       <artifactId>measurement-provider</artifactId>
       <version>0.1.0</version>
     </dependency>
     <dependency>
-      <groupId>life.qbic.data-access</groupId>
+      <groupId>life.qbic.data-download</groupId>
       <artifactId>openbis-connector</artifactId>
       <version>0.1.0</version>
     </dependency>
     <dependency>
-      <groupId>life.qbic.data-access</groupId>
+      <groupId>life.qbic.data-download</groupId>
       <artifactId>zip</artifactId>
       <version>0.1.0</version>
     </dependency>
   </dependencies>
 
+
+
+  <repositories>
+    <!-- The order of definitions matters. Explicitly defining central here to make sure it has the highest priority. -->
+    <!-- Main Maven repository -->
+    <repository>
+      <id>central</id>
+      <url>https://repo.maven.apache.org/maven2</url>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
+    <repository>
+      <id>nexus-releases</id>
+      <name>QBiC Releases</name>
+      <releases>
+        <checksumPolicy>fail</checksumPolicy>
+        <enabled>true</enabled>
+        <updatePolicy>always</updatePolicy>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+      <url>https://qbic-repo.qbic.uni-tuebingen.de/repository/maven-releases</url>
+    </repository>
+    <repository>
+      <id>nexus-snapshots</id>
+      <name>QBiC Snapshots</name>
+      <releases>
+        <enabled>false</enabled>
+      </releases>
+      <snapshots>
+        <checksumPolicy>fail</checksumPolicy>
+        <enabled>true</enabled>
+        <updatePolicy>always</updatePolicy>
+      </snapshots>
+      <url>https://qbic-repo.qbic.uni-tuebingen.de/repository/maven-snapshots</url>
+    </repository>
+  </repositories>
+
+
+  <distributionManagement>
+    <repository>
+      <uniqueVersion>true</uniqueVersion>
+      <id>nexus-releases</id>
+      <name>QBiC Releases</name>
+      <url>https://qbic-repo.qbic.uni-tuebingen.de/repository/maven-releases</url>
+    </repository>
+    <snapshotRepository>
+      <uniqueVersion>false</uniqueVersion>
+      <id>nexus-snapshots</id>
+      <name>QBiC Snapshots</name>
+      <url>https://qbic-repo.qbic.uni-tuebingen.de/repository/maven-snapshots</url>
+    </snapshotRepository>
+  </distributionManagement>
   <build>
     <plugins>
       <plugin>
@@ -67,7 +142,7 @@
         <artifactId>spring-boot-maven-plugin</artifactId>
         <version>${spring.boot.version}</version>
         <configuration>
-          <mainClass>life.qbic.data_access.rest.DataAccessRestServer</mainClass>
+          <mainClass>life.qbic.data_download.rest.DataDownloadRestServer</mainClass>
         </configuration>
         <executions>
           <execution>
