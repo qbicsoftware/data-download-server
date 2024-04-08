@@ -104,8 +104,8 @@ public class SecurityConfig {
             authorizedRequest
                 .requestMatchers(ignoredEndpoints)
                 .permitAll())
-//        //require https
-//        .requiresChannel(channel -> channel.anyRequest().requiresSecure())
+        //require https
+        .requiresChannel(channel -> channel.anyRequest().requiresSecure())
         .authenticationProvider(authenticationProvider)
         .addFilterAt(tokenAuthenticationFilter, BasicAuthenticationFilter.class)
         .authorizeHttpRequests(authorizedRequest ->
