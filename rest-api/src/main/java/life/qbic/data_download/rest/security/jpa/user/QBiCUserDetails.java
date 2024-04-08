@@ -2,11 +2,16 @@ package life.qbic.data_download.rest.security.jpa.user;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import org.springframework.data.annotation.ReadOnlyProperty;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -20,25 +25,25 @@ import org.springframework.security.core.userdetails.UserDetails;
 public class QBiCUserDetails implements UserDetails {
 
   @Id
-  @ReadOnlyProperty
   @Column(name = "id")
+  @ReadOnlyProperty
   private String id;
 
+  @OneToMany(fetch = FetchType.EAGER, mappedBy = "user")
   @ReadOnlyProperty
+  private Set<UserRole> userRoles;
+
   @Column(nullable = false, name = "active")
+  @ReadOnlyProperty
   private boolean active;
 
   public String id() {
     return id;
   }
 
-  public boolean active() {
-    return active;
-  }
-
   @Override
   public Collection<? extends GrantedAuthority> getAuthorities() {
-    return List.of();
+    return userRoles.stream().map(UserRole::role).toList();
   }
 
   @Override

@@ -12,7 +12,9 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Optional;
 import java.util.UUID;
+import javax.swing.text.html.Option;
 import life.qbic.data_download.measurements.api.DataFile;
 import life.qbic.data_download.measurements.api.MeasurementData;
 import life.qbic.data_download.measurements.api.MeasurementDataProvider;
@@ -26,6 +28,7 @@ import life.qbic.data_download.util.zip.api.FileTimes;
 import life.qbic.data_download.util.zip.manipulation.BufferedZippingFunctions;
 import org.slf4j.Logger;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -39,15 +42,18 @@ public class DownloadController {
 
   private final MeasurementDataProvider measurementDataProvider;
   private final MeasurementDataReaderFactory measurementDataReaderFactory;
+  private final int downloadBufferSize;
 
   private static final Logger log = getLogger(DownloadController.class);
 
   public DownloadController(
       @Qualifier("measurementDataProvider") MeasurementDataProvider measurementDataProvider,
-      @Qualifier("measurementDataReaderFactory") MeasurementDataReaderFactory measurementDataReaderFactory
-  ) {
+      @Qualifier("measurementDataReaderFactory") MeasurementDataReaderFactory measurementDataReaderFactory,
+      @Value("${server.memory.download.buffer}") Integer downloadBufferSize) {
     this.measurementDataProvider = measurementDataProvider;
     this.measurementDataReaderFactory = measurementDataReaderFactory;
+    this.downloadBufferSize = Optional.ofNullable(downloadBufferSize)
+        .orElse(BufferedZippingFunctions.DEFAULT_BUFFER_SIZE);
   }
 
 
@@ -107,7 +113,7 @@ public class DownloadController {
             new FileTimes(file.fileInfo().registrationMillis(), -1,
                 file.fileInfo().lastModifiedMillis()));
 
-        BufferedZippingFunctions.addToZip(zippedStream, zipEntryFileInfo, file.inputStream(), BufferedZippingFunctions.DEFAULT_BUFFER_SIZE);
+        BufferedZippingFunctions.addToZip(zippedStream, zipEntryFileInfo, file.inputStream(), downloadBufferSize);
       }
     } catch (IOException e) {
       throw new GlobalException(

@@ -24,7 +24,7 @@ public class AsyncDownloadConfig implements AsyncConfigurer {
   public AsyncTaskExecutor getAsyncExecutor() {
     ThreadPoolTaskExecutor threadPoolTaskExecutor = new ThreadPoolTaskExecutor();
     threadPoolTaskExecutor.setCorePoolSize(2);
-    threadPoolTaskExecutor.setMaxPoolSize(2);
+    threadPoolTaskExecutor.setMaxPoolSize(5);
     threadPoolTaskExecutor.setQueueCapacity(200);
     threadPoolTaskExecutor.setThreadNamePrefix("download - ");
     threadPoolTaskExecutor.initialize();
