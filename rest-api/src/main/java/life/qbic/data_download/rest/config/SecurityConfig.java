@@ -5,9 +5,9 @@ import static org.springframework.security.authorization.AuthorizationManagers.a
 import javax.sql.DataSource;
 import life.qbic.data_download.rest.security.QBiCTokenAuthenticationFilter;
 import life.qbic.data_download.rest.security.QBiCTokenAuthenticationProvider;
-import life.qbic.data_download.rest.security.QBiCTokenMatcher;
+import life.qbic.data_download.rest.security.QBicTokenEncoder;
 import life.qbic.data_download.rest.security.RequestAuthorizationManagerFactory;
-import life.qbic.data_download.rest.security.TokenMatcher;
+import life.qbic.data_download.rest.security.TokenEncoder;
 import life.qbic.data_download.rest.security.acl.MeasurementMappingService;
 import life.qbic.data_download.rest.security.acl.QBiCMeasurementMappingService;
 import life.qbic.data_download.rest.security.acl.QbicPermissionEvaluator;
@@ -64,16 +64,18 @@ public class SecurityConfig {
 
 
   @Bean("accessTokenEncoder")
-  public TokenMatcher tokenEncoder() {
-    return new QBiCTokenMatcher();
+  public TokenEncoder tokenEncoder(
+      @Value("${qbic.access-token.salt}") String salt,
+      @Value("${qbic.access-token.iteration-count}") int iterationCount) {
+    return new QBicTokenEncoder(salt, iterationCount);
   }
 
   @Bean("tokenAuthenticationProvider")
   public QBiCTokenAuthenticationProvider authenticationProvider(
-      @Qualifier("accessTokenEncoder") TokenMatcher tokenMatcher,
+      @Qualifier("accessTokenEncoder") TokenEncoder tokenEncoder,
       EncodedAccessTokenRepository encodedAccessTokenRepository,
       UserDetailsRepository userDetailsRepository) {
-    return new QBiCTokenAuthenticationProvider(tokenMatcher, encodedAccessTokenRepository,
+    return new QBiCTokenAuthenticationProvider(tokenEncoder, encodedAccessTokenRepository,
         userDetailsRepository);
   }
 

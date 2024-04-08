@@ -1,8 +1,10 @@
 package life.qbic.data_download.rest.security.jpa.token;
 
-import org.springframework.data.jpa.repository.JpaRepository;
+import java.util.Optional;
+import org.springframework.data.repository.Repository;
 
 
-public interface EncodedAccessTokenRepository extends JpaRepository<EncodedAccessToken, Integer> {
+public interface EncodedAccessTokenRepository extends Repository<EncodedAccessToken, Integer> {
 
+  Optional<EncodedAccessToken> findByAccessTokenEquals(String accessToken);
 }

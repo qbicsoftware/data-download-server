@@ -3,7 +3,7 @@
     {
       "name": "openbis.filename.ignored-prefix",
       "type": "java.lang.String",
-      "description": "A prefix that is ignored in the filepaths. Defaults to original/"
+      "description": "A prefix that is stripped from the file's path."
     },
     {
       "name": "qbic.access-management.datasource.url",
@@ -19,5 +19,15 @@
       "name": "qbic.access-management.datasource.password",
       "type": "java.lang.String",
       "description": "The password for the datasource from which access control information is fetched."
+    },
+    {
+      "name": "qbic.access-token.salt",
+      "type": "java.lang.String",
+      "description": "A hex string used as salt for the personal access tokens."
+    },
+    {
+      "name": "qbic.access-token.iteration-count",
+      "type": "java.lang.String",
+      "description": "The number of iterations used for encrypting personal access tokens."
     }
   ] }

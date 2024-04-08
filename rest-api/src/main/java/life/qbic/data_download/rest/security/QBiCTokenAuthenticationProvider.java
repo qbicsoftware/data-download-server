@@ -19,14 +19,14 @@ import org.springframework.security.core.AuthenticationException;
  */
 public class QBiCTokenAuthenticationProvider implements AuthenticationProvider {
 
-  private final TokenMatcher tokenMatcher;
+  private final TokenEncoder tokenEncoder;
   private final EncodedAccessTokenRepository encodedAccessTokenRepository;
   private final UserDetailsRepository userDetailsRepository;
 
-  public QBiCTokenAuthenticationProvider(TokenMatcher tokenMatcher,
+  public QBiCTokenAuthenticationProvider(TokenEncoder tokenEncoder,
       EncodedAccessTokenRepository encodedAccessTokenRepository,
       UserDetailsRepository userDetailsRepository) {
-    this.tokenMatcher = requireNonNull(tokenMatcher, "tokenMatcher must not be null");
+    this.tokenEncoder = requireNonNull(tokenEncoder, "tokenEncoder must not be null");
     this.encodedAccessTokenRepository = requireNonNull(encodedAccessTokenRepository,
         "encodedAccessTokenRepository must not be null");
     this.userDetailsRepository = requireNonNull(userDetailsRepository,
@@ -37,13 +37,10 @@ public class QBiCTokenAuthenticationProvider implements AuthenticationProvider {
   public Authentication authenticate(Authentication authentication) throws AuthenticationException {
     if (authentication instanceof QBiCTokenAuthenticationRequest authenticationRequest) {
       String token = authenticationRequest.getToken();
-      EncodedAccessToken encodedAccessToken = encodedAccessTokenRepository.findAll()
-          .parallelStream()
-          .filter(storedToken -> tokenMatcher.matches(token.toCharArray(),
-              storedToken.getAccessToken()))
-          .findAny().orElseThrow(
-              () -> new BadCredentialsException("not a valid token")
-          );
+      String encodedToken = tokenEncoder.encode(token);
+      EncodedAccessToken encodedAccessToken = encodedAccessTokenRepository
+          .findByAccessTokenEquals(encodedToken)
+          .orElseThrow(() -> new BadCredentialsException("not a valid token"));
       if (encodedAccessToken.isExpired()) {
         throw new CredentialsExpiredException("expired token");
       }
