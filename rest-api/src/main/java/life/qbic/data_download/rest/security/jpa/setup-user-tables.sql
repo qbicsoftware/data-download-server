@@ -11,9 +11,9 @@ CREATE TABLE `ngs_measurements`
 
 CREATE TABLE `personal_access_tokens`
 (
-    `id`                  int(11) NOT NULL,
+    `id`                  int(11) NOT NULL AUTO_INCREMENT,
     `tokenValueEncrypted` varchar(255)   DEFAULT NULL,
-    `creationDate`        datetime(6)    DEFAULT NULL,
+    `creationDate`        datetime(6) DEFAULT NULL,
     `duration`            decimal(21, 0) DEFAULT NULL,
     `userId`              varchar(255)   DEFAULT NULL,
     PRIMARY KEY (`id`)
@@ -52,12 +52,12 @@ CREATE TABLE `users`
 
 CREATE TABLE `user_role`
 (
-    `id`     bigint(20)   NOT NULL AUTO_INCREMENT,
-    `roleId` bigint(20)   NOT NULL,
+    `id`     bigint(20) NOT NULL AUTO_INCREMENT,
+    `roleId` bigint(20) NOT NULL,
     `userId` varchar(255) NOT NULL,
     PRIMARY KEY (`id`),
-    KEY `FK_userId` (`userId`),
-    KEY `FK_roleId` (`roleId`),
+    KEY      `FK_userId` (`userId`),
+    KEY      `FK_roleId` (`roleId`),
     CONSTRAINT `FK_roleId` FOREIGN KEY (`roleId`) REFERENCES `roles` (`id`),
     CONSTRAINT `FK_userId` FOREIGN KEY (`userId`) REFERENCES `users` (`id`)
 ) ENGINE = InnoDB
