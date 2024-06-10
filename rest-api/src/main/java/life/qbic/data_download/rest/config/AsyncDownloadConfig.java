@@ -19,13 +19,20 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @EnableAsync
 public class AsyncDownloadConfig implements AsyncConfigurer {
 
+  @Value("${spring.async.threadpool.core-size}")
+  private int corePoolSize;
+  @Value("${spring.async.threadpool.max-size}")
+  private int maxPoolSize;
+  @Value("${spring.async.threadpool.queue-capacity}")
+  private int queueCapacity;
+
   @Override
   @Bean("taskExecutor")
   public AsyncTaskExecutor getAsyncExecutor() {
     ThreadPoolTaskExecutor threadPoolTaskExecutor = new ThreadPoolTaskExecutor();
-    threadPoolTaskExecutor.setCorePoolSize(2);
-    threadPoolTaskExecutor.setMaxPoolSize(5);
-    threadPoolTaskExecutor.setQueueCapacity(200);
+    threadPoolTaskExecutor.setCorePoolSize(corePoolSize);
+    threadPoolTaskExecutor.setMaxPoolSize(maxPoolSize);
+    threadPoolTaskExecutor.setQueueCapacity(queueCapacity);
     threadPoolTaskExecutor.setThreadNamePrefix("download - ");
     threadPoolTaskExecutor.initialize();
     return threadPoolTaskExecutor;
