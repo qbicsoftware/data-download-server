@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.time.LocalDateTime;
@@ -38,6 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 @RestController
+@Tag(name = "Download Endpoints", description = "Rest endpoints related to downloading data")
 public class DownloadController {
 
   private final MeasurementDataProvider measurementDataProvider;
@@ -59,7 +61,7 @@ public class DownloadController {
 
   @GetMapping(value = "/measurements/{measurementId}", produces = MediaType.APPLICATION_JSON_VALUE)
   @Operation(summary = "Download a measurement from the given measurement identifier")
-  @Parameter(name = "measurementId", required = true, description = "The identifier of the measurement to download")
+  @Parameter(name = "measurementId", required = true, description = "The identifier of the measurement to download", example = "NGSQ0001006AO-25948529211108")
   @ApiResponses(value = {
       @ApiResponse(responseCode = "200", description = "successful operation, the measurement is retrieved asynchronously", content = @Content(schema = @Schema(implementation = Void.class))),
       @ApiResponse(responseCode = "403", description = "forbidden, you do not have access to this resource", content = @Content(schema = @Schema(implementation = Void.class))),
