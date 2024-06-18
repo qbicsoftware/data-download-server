@@ -18,11 +18,12 @@ import life.qbic.data_download.rest.security.jpa.user.UserDetailsRepository;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.security.access.PermissionEvaluator;
 import org.springframework.security.access.expression.method.DefaultMethodSecurityExpressionHandler;
 import org.springframework.security.access.expression.method.MethodSecurityExpressionHandler;
@@ -168,16 +169,17 @@ public class SecurityConfig {
         aclAuthorizationStrategy());
   }
 
+  @Bean(name="securityDataSourceProperties")
+  @ConfigurationProperties("qbic.access-management.datasource")
+  public DataSourceProperties dataSourceProperties() {
+    return new DataSourceProperties();
+  }
+
   @Bean("securityDataSource")
-  public DataSource dataSource(
-      @Value("${qbic.access-management.datasource.url}") String url,
-      @Value("${qbic.access-management.datasource.username}") String name,
-      @Value("${qbic.access-management.datasource.password}") String password) {
-    var ds = new DriverManagerDataSource();
-    ds.setUrl(url);
-    ds.setUsername(name);
-    ds.setPassword(password);
-    return ds;
+  public DataSource dataSource() {
+    return dataSourceProperties()
+        .initializeDataSourceBuilder()
+        .build();
   }
 
   @Bean("idSupportingLookupStrategy")
