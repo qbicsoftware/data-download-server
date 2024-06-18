@@ -15,7 +15,6 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 import java.util.UUID;
-import javax.swing.text.html.Option;
 import life.qbic.data_download.measurements.api.DataFile;
 import life.qbic.data_download.measurements.api.MeasurementData;
 import life.qbic.data_download.measurements.api.MeasurementDataProvider;
