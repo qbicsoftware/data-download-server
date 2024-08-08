@@ -68,9 +68,10 @@ public class QBiCTokenAuthenticationFilter extends OncePerRequestFilter {
       return;
     }
     var authentication = new QBiCTokenAuthenticationRequest(token);
-    logger.trace("Trying to authenticate token " + authentication.getToken());
+    logger.trace("Trying to authenticate token.");
     Authentication authenticatedAuthentication = authenticationManager.authenticate(authentication);
     // We need to save the authentication to the context as described in https://github.com/spring-projects/spring-security/issues/12758#issuecomment-1443729881
+    logger.trace("Successfully authenticated token.");
     SecurityContext context = securityContextHolderStrategy.createEmptyContext();
     context.setAuthentication(authenticatedAuthentication);
     securityContextHolderStrategy.setContext(context);
