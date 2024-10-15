@@ -6,12 +6,12 @@
   <parent>
     <groupId>life.qbic</groupId>
     <artifactId>data-download-server</artifactId>
-    <version>1.0.5</version>
+    <version>1.0.6</version>
   </parent>
 
   <groupId>life.qbic.data-download</groupId>
   <artifactId>measurement-provider</artifactId>
-  <version>1.0.5</version>
+  <version>1.0.6</version>
   <packaging>jar</packaging>
 
   <build>
