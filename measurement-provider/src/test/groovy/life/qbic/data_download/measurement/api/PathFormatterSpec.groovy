@@ -5,7 +5,7 @@ import spock.lang.Specification
 
 class PathFormatterSpec extends Specification {
 
-    def "Given a String with a to filtered part, the filtered part past not pe part of the resulting String"() {
+    def "Given a String with a to filtered part, the filtered part must not be part of the resulting String"() {
         given:
         var filter = Arrays.asList("awesome", "wehaa")
 
