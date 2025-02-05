@@ -6,10 +6,12 @@ import ch.ethz.sis.openbis.generic.asapi.v3.dto.datastore.DataStore;
 import ch.ethz.sis.openbis.generic.dssapi.v3.dto.datasetfile.download.DataSetFileDownload;
 import ch.ethz.sis.openbis.generic.dssapi.v3.dto.datasetfile.download.DataSetFileDownloadReader;
 import java.io.InputStream;
-import java.util.Optional;
+import java.util.List;
+import java.util.Objects;
 import life.qbic.data_download.measurements.api.DataFile;
 import life.qbic.data_download.measurements.api.FileInfo;
 import life.qbic.data_download.measurements.api.MeasurementDataReader;
+import life.qbic.data_download.measurements.api.PathFormatter;
 
 /**
  * Reads openbis data streams
@@ -17,11 +19,16 @@ import life.qbic.data_download.measurements.api.MeasurementDataReader;
 public class DatasetFileStreamReaderImpl implements MeasurementDataReader {
 
   private DataSetFileDownloadReader dataSetFileDownloadReader;
-  private final String ignoredPrefix;
+
+   private final PathFormatter formatter;
+
+  private static final String UUID_REGEX = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
 
   public DatasetFileStreamReaderImpl(String ignoredPrefix) {
+    Objects.requireNonNull(ignoredPrefix);
     dataSetFileDownloadReader = null;
-    this.ignoredPrefix = Optional.ofNullable(ignoredPrefix).orElse("");
+    var filter = List.of(ignoredPrefix, UUID_REGEX);
+    this.formatter = PathFormatter.with(filter);
   }
 
 
@@ -55,7 +62,10 @@ public class DatasetFileStreamReaderImpl implements MeasurementDataReader {
         .toEpochMilli() : -1;
     long lastModifiedMillis = nonNull(dataStore) ? dataStore.getModificationDate().toInstant()
         .toEpochMilli() : -1;
-    FileInfo fileInfo = new FileInfo(fileDownload.getDataSetFile().getPath().replaceFirst(ignoredPrefix, ""),
+
+    var cleanedPath = formatter.format(fileDownload.getDataSetFile().getPath());
+
+    FileInfo fileInfo = new FileInfo(cleanedPath,
         fileDownload.getDataSetFile().getFileLength(),
         Integer.toUnsignedLong(fileDownload.getDataSetFile().getChecksumCRC32()),
         creationMillis,
