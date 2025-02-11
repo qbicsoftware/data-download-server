@@ -7,12 +7,12 @@
   <parent>
     <groupId>life.qbic</groupId>
     <artifactId>data-download-server</artifactId>
-    <version>1.0.6</version>
+    <version>1.0.8</version>
   </parent>
 
   <groupId>life.qbic.data-download</groupId>
   <artifactId>rest-server</artifactId>
-  <version>1.0.6</version>
+  <version>1.0.8</version>
   <packaging>jar</packaging>
 
   <dependencyManagement>
@@ -65,17 +65,17 @@
     <dependency>
       <groupId>life.qbic.data-download</groupId>
       <artifactId>measurement-provider</artifactId>
-      <version>1.0.6</version>
+      <version>1.0.8</version>
     </dependency>
     <dependency>
       <groupId>life.qbic.data-download</groupId>
       <artifactId>openbis-connector</artifactId>
-      <version>1.0.6</version>
+      <version>1.0.8</version>
     </dependency>
     <dependency>
       <groupId>life.qbic.data-download</groupId>
       <artifactId>zip</artifactId>
-      <version>1.0.6</version>
+      <version>1.0.8</version>
     </dependency>
   </dependencies>
 
