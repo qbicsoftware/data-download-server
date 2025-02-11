@@ -13,6 +13,36 @@
   <artifactId>measurement-provider</artifactId>
   <version>1.0.6</version>
   <packaging>jar</packaging>
+  <dependencies>
+    <dependency>
+      <groupId>org.spockframework</groupId>
+      <artifactId>spock-core</artifactId>
+      <version>2.4-M4-groovy-4.0</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.groovy</groupId>
+      <artifactId>groovy-all</artifactId>
+      <version>4.0.24</version>
+      <type>pom</type>
+      <scope>test</scope>
+    </dependency>
+    <!-- JUnit Platform for Spock -->
+    <dependency>
+      <groupId>org.junit.platform</groupId>
+      <artifactId>junit-platform-launcher</artifactId>
+      <version>1.9.2</version> <!-- Ensure it's at least 1.7+ -->
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Optional: For Running Spock with JUnit 5 -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-engine</artifactId>
+      <version>5.9.2</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
 
   <build>
     <plugins>
