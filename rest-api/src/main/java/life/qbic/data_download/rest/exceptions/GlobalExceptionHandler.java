@@ -59,6 +59,16 @@ public class GlobalExceptionHandler {
     log.error(e.getMessage(), e);
     return ResponseEntity
         .status(HttpStatus.INTERNAL_SERVER_ERROR)
+        .contentType(MediaType.TEXT_PLAIN)
+        .body("Something went wrong. Please try again later.");
+  }
+
+  @ExceptionHandler(value = RuntimeException.class)
+  public ResponseEntity<String> unknownException(RuntimeException e) {
+    log.error(e.getMessage(), e);
+    return ResponseEntity
+        .status(HttpStatus.INTERNAL_SERVER_ERROR)
+        .contentType(MediaType.TEXT_PLAIN)
         .body("Something went wrong. Please try again later.");
   }
 
