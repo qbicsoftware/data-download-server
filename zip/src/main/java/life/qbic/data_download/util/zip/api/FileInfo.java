@@ -13,7 +13,7 @@ public record FileInfo(String filePath, long fileSize, long expectedCrc, FileTim
     if (isNull(fileTimes)) {
       fileTimes = FileTimes.unknown();
     }
-    if (fileSize <= 0) {
+    if (fileSize < 0) {
       throw new IllegalArgumentException("File size must be greater than 0");
     }
   }
