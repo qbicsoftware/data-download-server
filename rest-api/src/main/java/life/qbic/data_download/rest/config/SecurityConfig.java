@@ -42,6 +42,7 @@ import org.springframework.security.acls.model.MutableAclService;
 import org.springframework.security.acls.model.PermissionGrantingStrategy;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -105,13 +106,12 @@ public class SecurityConfig {
             authorizedRequest
                 .requestMatchers(ignoredEndpoints)
                 .permitAll())
-        //require https
-        .requiresChannel(channel -> channel.anyRequest().requiresSecure())
+        .redirectToHttps(Customizer.withDefaults())
         .authenticationProvider(authenticationProvider)
         .addFilterAt(tokenAuthenticationFilter, BasicAuthenticationFilter.class)
         .authorizeHttpRequests(authorizedRequest ->
             authorizedRequest
-                .requestMatchers("measurements/{measurementId}")
+                .requestMatchers("/measurements/{measurementId}")
                 .access(anyOf(
                     requestAuthorizationManagerFactory.spel(
                         "hasPermission(#measurementId, 'qbic.measurement', 'READ')")
