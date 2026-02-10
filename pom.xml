@@ -61,7 +61,6 @@
       <url>https://qbic-repo.qbic.uni-tuebingen.de/repository/maven-snapshots</url>
     </repository>
   </repositories>
-
   <distributionManagement>
     <repository>
       <uniqueVersion>true</uniqueVersion>
