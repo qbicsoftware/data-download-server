@@ -132,6 +132,7 @@ public class GlobalException extends RuntimeException {
    * information and avoids string matching to search for the error message.
    */
   public enum ErrorCode {
+    ILLEGAL_MEASUREMENT_ID,
     GENERAL,
     MEASUREMENT_NOT_FOUND;
 

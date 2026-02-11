@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import life.qbic.data_download.measurements.api.DataFile;
 import life.qbic.data_download.measurements.api.MeasurementData;
 import life.qbic.data_download.measurements.api.MeasurementDataProvider;
@@ -68,18 +69,19 @@ public class DownloadController {
   })
   public ResponseEntity<StreamingResponseBody> downloadMeasurement(
       @PathVariable("measurementId") String measurementId) {
+    var sanitizedId = sanitizeMeasurementId(measurementId);
     String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
     var requestId = "downloadMeasurement-" + UUID.randomUUID();
     log.info("request %s: user %s requests measurement %s".formatted(requestId, currentUser,
-        measurementId));
-    var measurementIdentifier = new MeasurementId(measurementId);
+        sanitizedId));
+    var measurementIdentifier = new MeasurementId(sanitizedId);
     MeasurementData measurementData = measurementDataProvider.loadData(measurementIdentifier);
     if (measurementData == null) {
       throw new GlobalException("request %s failed.".formatted(requestId),
-          ErrorCode.MEASUREMENT_NOT_FOUND, ErrorParameters.of(measurementId));
+          ErrorCode.MEASUREMENT_NOT_FOUND, ErrorParameters.of(sanitizedId));
     }
     String outputFileName =
-        measurementId + "-"
+        sanitizedId + "-"
             + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd.hhmmss"))
             + ".zip";
 
@@ -97,6 +99,14 @@ public class DownloadController {
         .header("Expires", "0")
         .header("Content-Disposition", "attachment;filename=" + outputFileName)
         .body(responseBody);
+  }
+
+  private String sanitizeMeasurementId(String measurementId) {
+    if (Pattern.compile("[^a-zA-Z0-9-]+").matcher(measurementId).hasMatch()) {
+      throw new GlobalException("unexpected measurement identifier containing unallowed characters",
+          ErrorCode.ILLEGAL_MEASUREMENT_ID, ErrorParameters.of("The provided measurement identifier contained unexpected characters."));
+    }
+    return measurementId;
   }
 
   private void writeDataToStream(MeasurementId measurementId, OutputStream outputStream, MeasurementData measurementData,
