@@ -35,6 +35,7 @@ public class GlobalExceptionHandler {
     UserFriendlyErrorMessage errorMessage = errorMessageTranslationService.translate(
         globalException);
     HttpStatusCode status = switch (globalException.errorCode()) {
+      case ILLEGAL_MEASUREMENT_ID -> HttpStatus.BAD_REQUEST;
       case GENERAL -> HttpStatus.INTERNAL_SERVER_ERROR;
       case MEASUREMENT_NOT_FOUND -> HttpStatus.NOT_FOUND;
     };
