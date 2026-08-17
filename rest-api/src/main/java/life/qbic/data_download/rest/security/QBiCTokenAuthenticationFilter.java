@@ -32,8 +32,8 @@ public class QBiCTokenAuthenticationFilter extends OncePerRequestFilter {
   private final AuthenticationManager authenticationManager;
   private final String tokenHeaderName;
 
-  private SecurityContextHolderStrategy securityContextHolderStrategy = SecurityContextHolder.getContextHolderStrategy();
-  private SecurityContextRepository securityContextRepository = new RequestAttributeSecurityContextRepository();
+  private final SecurityContextHolderStrategy securityContextHolderStrategy = SecurityContextHolder.getContextHolderStrategy();
+  private final SecurityContextRepository securityContextRepository = new RequestAttributeSecurityContextRepository();
 
   public QBiCTokenAuthenticationFilter(
       AuthenticationManager authenticationManager,
@@ -81,17 +81,5 @@ public class QBiCTokenAuthenticationFilter extends OncePerRequestFilter {
       this.logger.debug("Set SecurityContextHolder to %s".formatted(authenticatedAuthentication));
     }
     filterChain.doFilter(request, response);
-  }
-
-  public void setSecurityContextHolderStrategy(
-      SecurityContextHolderStrategy securityContextHolderStrategy) {
-    requireNonNull(securityContextHolderStrategy, "securityContextHolderStrategy must not be null");
-    this.securityContextHolderStrategy = securityContextHolderStrategy;
-  }
-
-  public void setSecurityContextRepository(
-      SecurityContextRepository securityContextRepository) {
-    requireNonNull(securityContextRepository, "securityContextRepository must not be null");
-    this.securityContextRepository = securityContextRepository;
   }
 }

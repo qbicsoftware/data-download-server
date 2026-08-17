@@ -32,6 +32,8 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AuthorizationServiceException;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -70,7 +72,11 @@ public class DownloadController {
   public ResponseEntity<StreamingResponseBody> downloadMeasurement(
       @PathVariable("measurementId") String measurementId) {
     var sanitizedId = sanitizeMeasurementId(measurementId);
-    String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    if (authentication == null) {
+      throw new AuthorizationServiceException("No authorization found.");
+    }
+    String currentUser = authentication.getName();
     var requestId = "downloadMeasurement-" + UUID.randomUUID();
     log.info("request %s: user %s requests measurement %s".formatted(requestId, currentUser,
         sanitizedId));
@@ -86,12 +92,22 @@ public class DownloadController {
             + ".zip";
 
     StreamingResponseBody responseBody = outputStream -> {
-      log.info("request %s: user %s started downloading measurement %s".formatted(requestId, currentUser, measurementIdentifier.id()));
-      writeDataToStream(measurementIdentifier,
-          outputStream,
-          measurementData,
-          measurementDataReaderFactory.getMeasurementDataReader());
-      log.info("request %s: user %s finished downloading measurement %s".formatted(requestId, currentUser, measurementIdentifier.id()));
+      log.info(
+          "request %s: user %s started downloading measurement %s".formatted(requestId, currentUser,
+              measurementIdentifier.id()));
+      try {
+        writeDataToStream(measurementIdentifier,
+            outputStream,
+            measurementData,
+            measurementDataReaderFactory.getMeasurementDataReader());
+        log.info("request %s: user %s finished downloading measurement %s".formatted(requestId,
+            currentUser, measurementIdentifier.id()));
+      } catch (Exception e) {
+        //explicit log-rethrow to make sure it is logged even if in streaming response (after committing 200 for fresh request)
+        log.error("request %s: user %s failed for measurement %s".formatted(requestId, currentUser,
+            measurementIdentifier.id()), e);
+        throw e;
+      }
     };
     return ResponseEntity.ok()
         .contentType(MediaType.APPLICATION_OCTET_STREAM)
@@ -111,6 +127,7 @@ public class DownloadController {
 
   private void writeDataToStream(MeasurementId measurementId, OutputStream outputStream, MeasurementData measurementData,
       MeasurementDataReader measurementDataReader) {
+    //was checked previously. authentication must not be null
     String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
     try (final var dataStream = measurementData.stream();
         final var zippedStream = BufferedZippingFunctions.zipInto(outputStream)) {

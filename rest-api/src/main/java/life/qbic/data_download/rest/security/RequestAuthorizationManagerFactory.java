@@ -18,8 +18,8 @@ public class RequestAuthorizationManagerFactory {
   }
 
   public AuthorizationManager<RequestAuthorizationContext> spel(String expression) {
-    WebExpressionAuthorizationManager manager = new WebExpressionAuthorizationManager(expression);
-    manager.setExpressionHandler(securityExpressionHandler);
-    return manager;
+    return WebExpressionAuthorizationManager
+        .withExpressionHandler(securityExpressionHandler)
+        .expression(expression);
   }
 }
