@@ -30,8 +30,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.AuthorizationServiceException;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -81,7 +79,6 @@ public class MeasurementFileController {
   public ResponseEntity<MeasurementManifest> manifest(
       @PathVariable("measurementId") String measurementId) {
     var sanitizedId = sanitizeMeasurementId(measurementId);
-    authenticate();
     var measurementIdentifier = new MeasurementId(sanitizedId);
     var files = measurementFileIndex.files(measurementIdentifier);
     if (files.isEmpty()) {
@@ -118,7 +115,6 @@ public class MeasurementFileController {
       @PathVariable("index") int index,
       @RequestHeader(value = HttpHeaders.RANGE, required = false) String rangeHeader) {
     var sanitizedId = sanitizeMeasurementId(measurementId);
-    authenticate();
     var measurementIdentifier = new MeasurementId(sanitizedId);
     FileInfo fileInfo = measurementFileIndex.fileByIndex(measurementIdentifier, index)
         .orElseThrow(() -> new GlobalException("request failed.",
@@ -201,13 +197,6 @@ public class MeasurementFileController {
       return null;
     }
     return DateTimeFormatter.ISO_INSTANT.format(Instant.ofEpochMilli(epochMillis));
-  }
-
-  private void authenticate() {
-    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-    if (authentication == null) {
-      throw new AuthorizationServiceException("No authorization found.");
-    }
   }
 
   private String sanitizeMeasurementId(String measurementId) {

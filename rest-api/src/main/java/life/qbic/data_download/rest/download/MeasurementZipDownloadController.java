@@ -33,8 +33,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.AuthorizationServiceException;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -73,11 +71,7 @@ public class MeasurementZipDownloadController {
   public ResponseEntity<StreamingResponseBody> downloadMeasurement(
       @PathVariable("measurementId") String measurementId) {
     var sanitizedId = sanitizeMeasurementId(measurementId);
-    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-    if (authentication == null) {
-      throw new AuthorizationServiceException("No authorization found.");
-    }
-    String currentUser = authentication.getName();
+    String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
     var requestId = "downloadMeasurement-" + UUID.randomUUID();
     log.info("request %s: user %s requests measurement %s".formatted(requestId, currentUser,
         sanitizedId));
