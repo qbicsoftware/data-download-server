@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import life.qbic.data_download.measurements.api.DataFile;
@@ -24,6 +25,7 @@ import life.qbic.data_download.rest.exceptions.GlobalException.ErrorCode;
 import life.qbic.data_download.rest.exceptions.GlobalException.ErrorParameters;
 import org.slf4j.Logger;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -49,19 +51,23 @@ public class MeasurementFileController {
   private static final Logger log = getLogger(MeasurementFileController.class);
 
   private static final Pattern MEASUREMENT_ID_PATTERN = Pattern.compile("[^a-zA-Z0-9-]+");
-  private static final int BUFFER_SIZE = 1024 * 1024;
+  private static final int DEFAULT_BUFFER_SIZE = 1024 * 1024; //1 MB buffer
 
   private final MeasurementDataProvider measurementDataProvider;
   private final MeasurementFileIndex measurementFileIndex;
   private final ByteRange byteRange;
+  private final int downloadBufferSize;
 
   public MeasurementFileController(
       @Qualifier("measurementDataProvider") MeasurementDataProvider measurementDataProvider,
       MeasurementFileIndex measurementFileIndex,
-      ByteRange byteRange) {
+      ByteRange byteRange,
+      @Value("${server.memory.download.buffer}") Integer downloadBufferSize) {
     this.measurementDataProvider = measurementDataProvider;
     this.measurementFileIndex = measurementFileIndex;
     this.byteRange = byteRange;
+    this.downloadBufferSize = Optional.ofNullable(downloadBufferSize)
+        .orElse(DEFAULT_BUFFER_SIZE);
   }
 
   @GetMapping(value = {"/measurements/{measurementId}/files/", "/measurements/{measurementId}/files"}, produces = MediaType.APPLICATION_JSON_VALUE)
@@ -178,7 +184,7 @@ public class MeasurementFileController {
           skipped += skippedNow;
         }
       }
-      byte[] buffer = new byte[BUFFER_SIZE];
+      byte[] buffer = new byte[downloadBufferSize];
       long remaining = contentLength;
       int read;
       while (remaining > 0 && (read = inputStream.read(buffer, 0,
