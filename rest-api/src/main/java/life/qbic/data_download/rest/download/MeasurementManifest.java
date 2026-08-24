@@ -1,5 +1,6 @@
 package life.qbic.data_download.rest.download;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 /**
@@ -18,8 +19,28 @@ public record MeasurementManifest(String measurementId, List<FileEntry> files) {
    * @param length        the size of the file in bytes
    * @param crc32         the CRC-32 checksum of the file content
    * @param lastModified  the last modification time in epoch millis, or -1 if unknown
+   * @param links         links to related resources, e.g. the file download endpoint
    */
-  public record FileEntry(int index, String path, long length, long crc32, long lastModified) {
+  public record FileEntry(int index, String path, long length, long crc32, long lastModified,
+      @JsonProperty("_links") Links links) {
+
+  }
+
+  /**
+   * Links to related resources for a manifest file entry.
+   *
+   * @param download link to download the file
+   */
+  public record Links(Download download) {
+
+  }
+
+  /**
+   * The download link of a file.
+   *
+   * @param href the relative URL to download the file
+   */
+  public record Download(String href) {
 
   }
 }

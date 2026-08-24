@@ -112,6 +112,7 @@ public class SecurityConfig {
         .authorizeHttpRequests(authorizedRequest ->
             authorizedRequest
                 .requestMatchers("/measurements/{measurementId}",
+                    "/measurements/{measurementId}/files",
                     "/measurements/{measurementId}/files/**")
                 .access(anyOf(
                     requestAuthorizationManagerFactory.spel(

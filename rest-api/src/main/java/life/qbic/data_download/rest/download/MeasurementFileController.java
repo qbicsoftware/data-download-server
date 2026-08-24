@@ -62,7 +62,7 @@ public class MeasurementFileController {
     this.byteRange = byteRange;
   }
 
-  @GetMapping(value = "/measurements/{measurementId}/files/", produces = MediaType.APPLICATION_JSON_VALUE)
+  @GetMapping(value = {"/measurements/{measurementId}/files/", "/measurements/{measurementId}/files"}, produces = MediaType.APPLICATION_JSON_VALUE)
   @Operation(summary = "List the files of a measurement in stable order")
   @Parameter(name = "measurementId", required = true, description = "The identifier of the measurement", example = "NGSQ0001006AO-25948529211108")
   @ApiResponses(value = {
@@ -83,8 +83,12 @@ public class MeasurementFileController {
     var entries = new java.util.ArrayList<MeasurementManifest.FileEntry>();
     for (int i = 0; i < files.size(); i++) {
       FileInfo fileInfo = files.get(i);
+      String downloadHref =
+          "/measurements/%s/files/%d".formatted(sanitizedId, i);
+      var links = new MeasurementManifest.Links(
+          new MeasurementManifest.Download(downloadHref));
       entries.add(new MeasurementManifest.FileEntry(i, fileInfo.path(), fileInfo.length(),
-          fileInfo.crc32(), fileInfo.lastModifiedMillis()));
+          fileInfo.crc32(), fileInfo.lastModifiedMillis(), links));
     }
     return ResponseEntity.ok(new MeasurementManifest(sanitizedId, entries));
   }
