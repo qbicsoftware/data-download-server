@@ -11,6 +11,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import life.qbic.data_download.measurements.api.DataFile;
@@ -88,7 +90,7 @@ public class MeasurementFileController {
       var links = new MeasurementManifest.Links(
           new MeasurementManifest.Download(downloadHref));
       entries.add(new MeasurementManifest.FileEntry(i, fileInfo.path(), fileInfo.length(),
-          fileInfo.crc32(), fileInfo.lastModifiedMillis(), links));
+          fileInfo.crc32(), formatUtcIso(fileInfo.lastModifiedMillis()), links));
     }
     return ResponseEntity.ok(new MeasurementManifest(sanitizedId, entries));
   }
@@ -185,6 +187,13 @@ public class MeasurementFileController {
         remaining -= read;
       }
     }
+  }
+
+  private String formatUtcIso(long epochMillis) {
+    if (epochMillis < 0) {
+      return null;
+    }
+    return DateTimeFormatter.ISO_INSTANT.format(Instant.ofEpochMilli(epochMillis));
   }
 
   private void authenticate(String measurementId) {
