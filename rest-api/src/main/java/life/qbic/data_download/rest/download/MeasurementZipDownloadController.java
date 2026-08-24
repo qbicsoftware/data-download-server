@@ -42,15 +42,15 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 
 @RestController
 @Tag(name = "Download Endpoints", description = "Rest endpoints related to downloading data")
-public class DownloadController {
+public class MeasurementZipDownloadController {
 
   private final MeasurementDataProvider measurementDataProvider;
   private final MeasurementDataReaderFactory measurementDataReaderFactory;
   private final int downloadBufferSize;
 
-  private static final Logger log = getLogger(DownloadController.class);
+  private static final Logger log = getLogger(MeasurementZipDownloadController.class);
 
-  public DownloadController(
+  public MeasurementZipDownloadController(
       @Qualifier("measurementDataProvider") MeasurementDataProvider measurementDataProvider,
       @Qualifier("measurementDataReaderFactory") MeasurementDataReaderFactory measurementDataReaderFactory,
       @Value("${server.memory.download.buffer}") Integer downloadBufferSize) {
