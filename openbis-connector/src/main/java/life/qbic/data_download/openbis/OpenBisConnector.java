@@ -102,7 +102,7 @@ public class OpenBisConnector implements MeasurementFinder, MeasurementDataProvi
         return null;
       }
       DataSetFile dataSetFile = searchFilesForMeasurement(session, dataSetPermIds).stream()
-          .filter(file -> Objects.equals(fileInfo.path(), formatPath(file.getPath())))
+          .filter(file -> Objects.equals(fileInfo.path(), pathFormatter.format(file.getPath())))
           .findFirst()
           .orElse(null);
       if (dataSetFile == null) {
@@ -118,15 +118,11 @@ public class OpenBisConnector implements MeasurementFinder, MeasurementDataProvi
         ? dataSetFile.getDataStore().getRegistrationDate().toInstant().toEpochMilli() : -1;
     long lastModifiedMillis = dataSetFile.getDataStore() != null
         ? dataSetFile.getDataStore().getModificationDate().toInstant().toEpochMilli() : -1;
-    return new FileInfo(formatPath(dataSetFile.getPath()),
+    return new FileInfo(pathFormatter.format(dataSetFile.getPath()),
         dataSetFile.getFileLength(),
         Integer.toUnsignedLong(dataSetFile.getChecksumCRC32()),
         creationMillis,
         lastModifiedMillis);
-  }
-
-  private String formatPath(String path) {
-    return pathFormatter.format(path);
   }
 
   private List<DataSetFile> searchFilesForMeasurement(OpenBisSession session,
