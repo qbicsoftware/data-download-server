@@ -2,6 +2,7 @@ package life.qbic.data_download.rest.download;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -20,6 +21,9 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class MeasurementFileIndex {
+
+  private static final Comparator<FileInfo> FILE_SORTING = Comparator.comparing(FileInfo::path);
+
 
   private record CacheEntry(Instant createdAt, List<FileInfo> files) {
 
@@ -51,10 +55,11 @@ public class MeasurementFileIndex {
     if (entry != null && !entry.expired(cacheTtl)) {
       return entry.files();
     }
-    List<FileInfo> files = Optional.ofNullable(measurementDataProvider.listFiles(measurementId))
-        .orElse(List.of());
-    cache.put(key, new CacheEntry(Instant.now(), files));
-    return files;
+    List<FileInfo> sortedFiles = measurementDataProvider.listFiles(measurementId)
+        .stream().sorted(FILE_SORTING)
+        .toList();
+    cache.put(key, new CacheEntry(Instant.now(), sortedFiles));
+    return sortedFiles;
   }
 
   /**

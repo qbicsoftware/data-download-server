@@ -18,7 +18,6 @@ import java.io.InputStream;
 import java.io.SequenceInputStream;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -31,6 +30,7 @@ import life.qbic.data_download.measurements.api.MeasurementId;
 import life.qbic.data_download.measurements.api.MeasurementInfo;
 import life.qbic.data_download.measurements.api.PathFormatter;
 import life.qbic.data_download.openbis.SessionFactory.OpenBisSession;
+import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -77,7 +77,7 @@ public class OpenBisConnector implements MeasurementFinder, MeasurementDataProvi
   }
 
   @Override
-  public List<FileInfo> listFiles(MeasurementId measurementId) {
+  @NonNull public List<FileInfo> listFiles(MeasurementId measurementId) {
     try (var session = sessionFactory.getSession()) {
       List<DataSetPermId> dataSetPermIds = loadDataSetsForMeasurement(session, measurementId)
           .stream()
@@ -86,7 +86,6 @@ public class OpenBisConnector implements MeasurementFinder, MeasurementDataProvi
       return searchFilesForMeasurement(session, dataSetPermIds).stream()
           .map(this::toFileInfo)
           .filter(fileInfo -> !fileInfo.path().isBlank())
-          .sorted(Comparator.comparing(FileInfo::path))
           .toList();
     }
   }
