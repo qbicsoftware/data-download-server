@@ -46,7 +46,7 @@ class MeasurementFileIndexTest {
   }
 
   @Test
-  @DisplayName("fileByIndex resolves the file at the given sorted index")
+  @DisplayName("fileByIndex resolves the file at the given sorted index alphabetically")
   void fileByIndexResolvesSortedPosition() {
     FakeProvider provider = new FakeProvider(List.of(Z, A, M));
     MeasurementFileIndex index = new MeasurementFileIndex(provider, Duration.ofMinutes(1));
@@ -54,9 +54,9 @@ class MeasurementFileIndexTest {
 
     // provider returns unsorted; index resolution is by list position (provider already sorted)
     assertTrue(index.fileByIndex(id, 0).isPresent());
-    assertEquals("/z", index.fileByIndex(id, 0).get().path());
-    assertEquals("/a", index.fileByIndex(id, 1).get().path());
-    assertEquals("/m", index.fileByIndex(id, 2).get().path());
+    assertEquals("/z", index.fileByIndex(id, 2).get().path());
+    assertEquals("/a", index.fileByIndex(id, 0).get().path());
+    assertEquals("/m", index.fileByIndex(id, 1).get().path());
     assertTrue(index.fileByIndex(id, 3).isEmpty());
     assertTrue(index.fileByIndex(id, -1).isEmpty());
   }

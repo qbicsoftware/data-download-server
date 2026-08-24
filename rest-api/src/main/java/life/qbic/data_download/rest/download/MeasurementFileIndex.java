@@ -55,7 +55,7 @@ public class MeasurementFileIndex {
     if (entry != null && !entry.expired(cacheTtl)) {
       return entry.files();
     }
-    List<FileInfo> sortedFiles = measurementDataProvider.listFiles(measurementId)
+    List<FileInfo> sortedFiles = Optional.ofNullable(measurementDataProvider.listFiles(measurementId)).orElse(List.of())
         .stream().sorted(FILE_SORTING)
         .toList();
     cache.put(key, new CacheEntry(Instant.now(), sortedFiles));
