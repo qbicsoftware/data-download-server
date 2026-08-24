@@ -164,12 +164,14 @@ public class OpenBisConnector implements MeasurementFinder, MeasurementDataProvi
 
   @Override
   public MeasurementData loadData(MeasurementId measurementId) {
-    try (var session = sessionFactory.getSession()) {
+    var session = sessionFactory.getSession();
+    try {
       List<DataSetPermId> dataSetPermIds = loadDataSetsForMeasurement(session, measurementId)
           .stream()
           .map(DataSet::getPermId)
           .toList();
       if (dataSetPermIds.isEmpty()) {
+        session.close();
         return null;
       }
 
@@ -178,7 +180,13 @@ public class OpenBisConnector implements MeasurementFinder, MeasurementDataProvi
           .map(DataSetFile::getPermId)
           .collect(Collectors.toCollection(ArrayList::new));
       InputStream inputStreamForFiles = getInputStreamForFiles(session, measurementFileIds);
-      return UnspecificMeasurementData.create(inputStreamForFiles);
+      // The stream is bound to the openBIS session, so the session must stay alive until the
+      // stream has been fully consumed. The session is released when the stream is closed.
+      return UnspecificMeasurementData.create(
+          new SessionAwareInputStream(inputStreamForFiles, session));
+    } catch (RuntimeException e) {
+      session.close();
+      throw e;
     }
   }
 
