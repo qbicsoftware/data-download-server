@@ -81,6 +81,8 @@ public class MeasurementFileController {
     var sanitizedId = sanitizeMeasurementId(measurementId);
     var measurementIdentifier = new MeasurementId(sanitizedId);
     var files = measurementFileIndex.files(measurementIdentifier);
+    // A measurement without any files is indistinguishable from a non-existent one, so an empty
+    // list is reported as "not found" to the client.
     if (files.isEmpty()) {
       throw new GlobalException("request failed.",
           ErrorCode.MEASUREMENT_NOT_FOUND, ErrorParameters.of(sanitizedId));
@@ -120,6 +122,8 @@ public class MeasurementFileController {
         .orElseThrow(() -> new GlobalException("request failed.",
             ErrorCode.FILE_NOT_FOUND, ErrorParameters.of(sanitizedId)));
 
+    // The index only carries file metadata; the content stream must be opened separately per
+    // request, otherwise the byte range could not be streamed independently of the manifest.
     DataFile dataFile = measurementDataProvider.loadFile(measurementIdentifier, fileInfo);
     if (dataFile == null) {
       throw new GlobalException("request failed.",
@@ -169,6 +173,9 @@ public class MeasurementFileController {
   private void writeRange(DataFile dataFile, long start, long contentLength, OutputStream outputStream)
       throws IOException {
     try (var inputStream = dataFile.inputStream()) {
+      // InputStream.skip is not guaranteed to skip the requested number of bytes, so we loop until
+      // the requested start offset is reached. When skip makes no progress (e.g. on some sources),
+      // fall back to reading a single byte at a time so we never loop forever.
       long skipped = 0;
       while (skipped < start) {
         long skippedNow = inputStream.skip(start - skipped);

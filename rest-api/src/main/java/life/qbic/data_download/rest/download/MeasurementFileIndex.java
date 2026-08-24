@@ -51,6 +51,9 @@ public class MeasurementFileIndex {
    */
   public List<FileInfo> files(MeasurementId measurementId) {
     String key = measurementId.id();
+    // Cache the list for a short TTL so the manifest order stays identical between a client's
+    // manifest read and its subsequent per-file requests, and so repeated requests do not each
+    // trigger an openBIS file listing.
     CacheEntry entry = cache.get(key);
     if (entry != null && !entry.expired(cacheTtl)) {
       return entry.files();
