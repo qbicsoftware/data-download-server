@@ -111,7 +111,8 @@ public class SecurityConfig {
         .addFilterAt(tokenAuthenticationFilter, BasicAuthenticationFilter.class)
         .authorizeHttpRequests(authorizedRequest ->
             authorizedRequest
-                .requestMatchers("/measurements/{measurementId}")
+                .requestMatchers("/measurements/{measurementId}",
+                    "/measurements/{measurementId}/files/**")
                 .access(anyOf(
                     requestAuthorizationManagerFactory.spel(
                         "hasPermission(#measurementId, 'qbic.measurement', 'READ')")
