@@ -8,16 +8,16 @@ import java.util.List;
 import life.qbic.data_download.measurements.api.DataFile;
 import life.qbic.data_download.measurements.api.FileInfo;
 import life.qbic.data_download.measurements.api.MeasurementData;
-import life.qbic.data_download.measurements.api.MeasurementId;
 import life.qbic.data_download.measurements.api.MeasurementDataProvider;
+import life.qbic.data_download.measurements.api.MeasurementId;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 class MeasurementFileIndexTest {
 
-  private static final FileInfo Z = new FileInfo("/z", 1, 1, 1, 1);
-  private static final FileInfo A = new FileInfo("/a", 2, 2, 2, 2);
-  private static final FileInfo M = new FileInfo("/m", 3, 3, 3, 3);
+  private static final FileInfo Z = new FileInfo("/z", "z", 1, 1, 1, 1);
+  private static final FileInfo A = new FileInfo("/a", "a", 2, 2, 2, 2);
+  private static final FileInfo M = new FileInfo("/m", "m", 3, 3, 3, 3);
 
   private static final class FakeProvider implements MeasurementDataProvider {
 

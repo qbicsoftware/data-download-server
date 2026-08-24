@@ -96,7 +96,7 @@ public class MeasurementFileController {
       var links = new MeasurementManifest.Links(
           new MeasurementManifest.Download(downloadHref));
       entries.add(new MeasurementManifest.FileEntry(i, fileInfo.path(), fileInfo.length(),
-          fileInfo.crc32(), formatUtcIso(fileInfo.lastModifiedMillis()), links));
+          fileInfo.crc32(), formatUtcIso(fileInfo.registeredEpochMillis()), links));
     }
     return ResponseEntity.ok(new MeasurementManifest(sanitizedId, entries));
   }

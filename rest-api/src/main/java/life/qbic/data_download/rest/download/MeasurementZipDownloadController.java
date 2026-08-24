@@ -139,7 +139,7 @@ public class MeasurementZipDownloadController {
             file.fileInfo().length(),
             file.fileInfo().crc32(),
             new FileTimes(file.fileInfo().registrationMillis(), -1,
-                file.fileInfo().lastModifiedMillis()));
+                file.fileInfo().registeredEpochMillis()));
 
         BufferedZippingFunctions.addToZip(zippedStream, zipEntryFileInfo, file.inputStream(), downloadBufferSize);
       }
