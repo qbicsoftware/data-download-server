@@ -117,7 +117,10 @@ public class OpenBisConnector implements MeasurementFinder, MeasurementDataProvi
         ? dataSetFile.getDataStore().getRegistrationDate().toInstant().toEpochMilli() : -1;
     long lastModifiedMillis = dataSetFile.getDataStore() != null
         ? dataSetFile.getDataStore().getModificationDate().toInstant().toEpochMilli() : -1;
-    return new FileInfo(pathFormatter.format(dataSetFile.getPath()),
+    String formattedPath = pathFormatter.format(dataSetFile.getPath());
+    var fileName = formattedPath.substring(formattedPath.lastIndexOf('/') + 1);
+    return new FileInfo(formattedPath,
+        fileName,
         dataSetFile.getFileLength(),
         Integer.toUnsignedLong(dataSetFile.getChecksumCRC32()),
         creationMillis,

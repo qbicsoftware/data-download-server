@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 import java.util.UUID;
@@ -88,7 +89,7 @@ public class MeasurementZipDownloadController {
     }
     String outputFileName =
         sanitizedId + "-"
-            + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd.hhmmss"))
+            + LocalDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyy-MM-dd.hhmmss"))
             + ".zip";
 
     StreamingResponseBody responseBody = outputStream -> {
@@ -139,7 +140,7 @@ public class MeasurementZipDownloadController {
             file.fileInfo().length(),
             file.fileInfo().crc32(),
             new FileTimes(file.fileInfo().registrationMillis(), -1,
-                file.fileInfo().registeredEpochMillis()));
+                file.fileInfo().lastModifiedMillis()));
 
         BufferedZippingFunctions.addToZip(zippedStream, zipEntryFileInfo, file.inputStream(), downloadBufferSize);
       }

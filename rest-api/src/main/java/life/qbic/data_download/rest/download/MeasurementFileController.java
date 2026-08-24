@@ -81,7 +81,7 @@ public class MeasurementFileController {
   public ResponseEntity<MeasurementManifest> manifest(
       @PathVariable("measurementId") String measurementId) {
     var sanitizedId = sanitizeMeasurementId(measurementId);
-    authenticate(sanitizedId);
+    authenticate();
     var measurementIdentifier = new MeasurementId(sanitizedId);
     var files = measurementFileIndex.files(measurementIdentifier);
     if (files.isEmpty()) {
@@ -95,8 +95,9 @@ public class MeasurementFileController {
           "/measurements/%s/files/%d".formatted(sanitizedId, i);
       var links = new MeasurementManifest.Links(
           new MeasurementManifest.Download(downloadHref));
-      entries.add(new MeasurementManifest.FileEntry(i, fileInfo.path(), fileInfo.length(),
-          fileInfo.crc32(), formatUtcIso(fileInfo.registeredEpochMillis()), links));
+      entries.add(new MeasurementManifest.FileEntry(i, fileInfo.path(), fileInfo.fileName(),
+          fileInfo.length(),
+          fileInfo.crc32(), formatUtcIso(fileInfo.registrationMillis()), links));
     }
     return ResponseEntity.ok(new MeasurementManifest(sanitizedId, entries));
   }
@@ -117,7 +118,7 @@ public class MeasurementFileController {
       @PathVariable("index") int index,
       @RequestHeader(value = HttpHeaders.RANGE, required = false) String rangeHeader) {
     var sanitizedId = sanitizeMeasurementId(measurementId);
-    authenticate(sanitizedId);
+    authenticate();
     var measurementIdentifier = new MeasurementId(sanitizedId);
     FileInfo fileInfo = measurementFileIndex.fileByIndex(measurementIdentifier, index)
         .orElseThrow(() -> new GlobalException("request failed.",
@@ -202,7 +203,7 @@ public class MeasurementFileController {
     return DateTimeFormatter.ISO_INSTANT.format(Instant.ofEpochMilli(epochMillis));
   }
 
-  private void authenticate(String measurementId) {
+  private void authenticate() {
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
     if (authentication == null) {
       throw new AuthorizationServiceException("No authorization found.");
