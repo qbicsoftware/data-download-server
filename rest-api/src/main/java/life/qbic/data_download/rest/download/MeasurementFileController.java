@@ -218,13 +218,46 @@ public class MeasurementFileController {
           skipped += skippedNow;
         }
       }
+      
       byte[] buffer = new byte[downloadBufferSize];
       long remaining = contentLength;
+      long totalBytesRead = 0;
+      long lastProgressLogTime = System.currentTimeMillis();
+      long lastReadTime = System.currentTimeMillis();
       int read;
+      
+      // Backpressure detection: if a read takes longer than this threshold, log a warning
+      long backpressureThresholdMs = 5000; // 5 seconds
+      long progressLogIntervalMs = 30000; // Log progress every 30 seconds
+      
       while (remaining > 0 && (read = inputStream.read(buffer, 0,
           (int) Math.min(buffer.length, remaining))) != -1) {
+        
+        long currentTime = System.currentTimeMillis();
+        long readDurationMs = currentTime - lastReadTime;
+        
+        // Detect backpressure: if read took too long, log warning
+        if (readDurationMs > backpressureThresholdMs) {
+          log.warn("Backpressure detected: read took {}ms (threshold: {}ms), transferred {}MB / {}MB total",
+              readDurationMs, backpressureThresholdMs,
+              totalBytesRead / (1024 * 1024), contentLength / (1024 * 1024));
+        }
+        
         outputStream.write(buffer, 0, read);
+        totalBytesRead += read;
         remaining -= read;
+        lastReadTime = System.currentTimeMillis();
+        
+        // Periodic progress logging
+        if (currentTime - lastProgressLogTime > progressLogIntervalMs) {
+          double progressPercent = (totalBytesRead * 100.0) / contentLength;
+          double throughputMBps = (totalBytesRead / (1024.0 * 1024.0)) / ((currentTime - lastProgressLogTime) / 1000.0);
+          log.info("Download progress: {}MB / {}MB ({}%), throughput: {} MB/s",
+              totalBytesRead / (1024 * 1024), contentLength / (1024 * 1024),
+              String.format("%.1f", progressPercent),
+              String.format("%.2f", throughputMBps));
+          lastProgressLogTime = currentTime;
+        }
       }
     }
   }
