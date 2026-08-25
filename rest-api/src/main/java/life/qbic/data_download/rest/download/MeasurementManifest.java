@@ -13,7 +13,7 @@ import java.util.List;
 @Schema(description = "A manifest of the files of a measurement in stable order")
 public record MeasurementManifest(
     @Schema(description = "The identifier of the measurement", example = "NGSQ0001006AO-25948529211108") String measurementId,
-    @Schema(description = "The ordered files of the measurement") List<FileEntry> files) {
+    @Schema(description = "The files of the measurement") List<FileEntry> files) {
 
   /**
    * A single file entry in a manifest.
