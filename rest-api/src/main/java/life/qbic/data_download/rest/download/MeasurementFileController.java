@@ -146,7 +146,7 @@ public class MeasurementFileController {
       log.info("request %s: user %s started downloading file %s of measurement %s".formatted(
           requestId, currentUser, fileInfo.path(), sanitizedId));
       try {
-        writeRange(dataFile, start, contentLength, outputStream);
+        writeRange(dataFile, start, contentLength, outputStream, fileInfo.path(), sanitizedId);
         log.info("request %s: user %s finished downloading file %s of measurement %s".formatted(
             requestId, currentUser, fileInfo.path(), sanitizedId));
       } catch (Exception e) {
@@ -200,8 +200,8 @@ public class MeasurementFileController {
     return false;
   }
 
-  private void writeRange(DataFile dataFile, long start, long contentLength, OutputStream outputStream)
-      throws IOException {
+  private void writeRange(DataFile dataFile, long start, long contentLength, OutputStream outputStream,
+      String filePath, String measurementId) throws IOException {
     try (var inputStream = dataFile.inputStream()) {
       // InputStream.skip is not guaranteed to skip the requested number of bytes, so we loop until
       // the requested start offset is reached. When skip makes no progress (e.g. on some sources),
@@ -238,8 +238,8 @@ public class MeasurementFileController {
         
         // Detect backpressure: if read took too long, log warning
         if (readDurationMs > backpressureThresholdMs) {
-          log.warn("Backpressure detected: read took {}ms (threshold: {}ms), transferred {}MB / {}MB total",
-              readDurationMs, backpressureThresholdMs,
+          log.warn("Backpressure detected for file {} of measurement {}: read took {}ms (threshold: {}ms), transferred {}MB / {}MB total",
+              filePath, measurementId, readDurationMs, backpressureThresholdMs,
               totalBytesRead / (1024 * 1024), contentLength / (1024 * 1024));
         }
         
@@ -252,7 +252,8 @@ public class MeasurementFileController {
         if (currentTime - lastProgressLogTime > progressLogIntervalMs) {
           double progressPercent = (totalBytesRead * 100.0) / contentLength;
           double throughputMBps = (totalBytesRead / (1024.0 * 1024.0)) / ((currentTime - lastProgressLogTime) / 1000.0);
-          log.info("Download progress: {}MB / {}MB ({}%), throughput: {} MB/s",
+          log.info("Download progress for file {} of measurement {}: {}MB / {}MB ({}%), throughput: {} MB/s",
+              filePath, measurementId,
               totalBytesRead / (1024 * 1024), contentLength / (1024 * 1024),
               String.format("%.1f", progressPercent),
               String.format("%.2f", throughputMBps));
