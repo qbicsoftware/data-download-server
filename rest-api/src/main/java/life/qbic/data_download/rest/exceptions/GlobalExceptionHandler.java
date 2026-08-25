@@ -38,6 +38,8 @@ public class GlobalExceptionHandler {
       case ILLEGAL_MEASUREMENT_ID -> HttpStatus.BAD_REQUEST;
       case GENERAL -> HttpStatus.INTERNAL_SERVER_ERROR;
       case MEASUREMENT_NOT_FOUND -> HttpStatus.NOT_FOUND;
+      case FILE_NOT_FOUND -> HttpStatus.NOT_FOUND;
+      case RANGE_NOT_SATISFIABLE -> HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE;
     };
     return ResponseEntity
         .status(status)
