@@ -58,9 +58,9 @@ public class DatasetFileStreamReaderImpl implements MeasurementDataReader {
       return null;
     }
     DataStore dataStore = fileDownload.getDataSetFile().getDataStore();
-    long creationMillis = nonNull(dataStore) ? dataStore.getRegistrationDate().toInstant()
-        .toEpochMilli() : -1;
     long registeredMillis = nonNull(dataStore) ? dataStore.getRegistrationDate().toInstant()
+        .toEpochMilli() : -1;
+    long lastModifiedMillis = nonNull(dataStore) ? dataStore.getModificationDate().toInstant()
         .toEpochMilli() : -1;
 
     var cleanedPath = formatter.format(fileDownload.getDataSetFile().getPath());
@@ -70,8 +70,8 @@ public class DatasetFileStreamReaderImpl implements MeasurementDataReader {
         fileName,
         fileDownload.getDataSetFile().getFileLength(),
         Integer.toUnsignedLong(fileDownload.getDataSetFile().getChecksumCRC32()),
-        creationMillis,
-        registeredMillis);
+        registeredMillis,
+        lastModifiedMillis);
     return new DataFile(fileInfo, fileDownload.getInputStream());
   }
 
