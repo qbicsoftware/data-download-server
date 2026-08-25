@@ -20,6 +20,7 @@ import life.qbic.data_download.measurements.api.DataFile;
 import life.qbic.data_download.measurements.api.FileInfo;
 import life.qbic.data_download.measurements.api.MeasurementDataProvider;
 import life.qbic.data_download.measurements.api.MeasurementId;
+import life.qbic.data_download.measurements.api.PathFormatter;
 import life.qbic.data_download.rest.exceptions.GlobalException;
 import life.qbic.data_download.rest.exceptions.GlobalException.ErrorCode;
 import life.qbic.data_download.rest.exceptions.GlobalException.ErrorParameters;
@@ -160,8 +161,7 @@ public class MeasurementFileController {
     headers.setContentLength(contentLength);
     headers.set(HttpHeaders.ACCEPT_RANGES, "bytes");
     headers.set(HttpHeaders.CONTENT_DISPOSITION,
-        "attachment; filename=\"" + fileInfo.path().substring(fileInfo.path().lastIndexOf('/') + 1)
-            + "\"");
+        "attachment; filename=\"" + PathFormatter.fileNameOf(fileInfo.path()) + "\"");
     if (isPartial) {
       headers.set(HttpHeaders.CONTENT_RANGE,
           "bytes %d-%d/%d".formatted(start, end, fileLength));

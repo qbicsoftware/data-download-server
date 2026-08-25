@@ -55,6 +55,19 @@ public class PathFormatter {
   }
 
   /**
+   * Extracts the file name of the provided path, i.e. the last path segment.
+   * <p>
+   * If the path does not contain a separator, the whole path is returned.
+   *
+   * @param path the path to extract the file name from
+   * @return the file name of the provided path
+   */
+  public static String fileNameOf(String path) {
+    int lastSeparator = path.lastIndexOf('/');
+    return lastSeparator < 0 ? path : path.substring(lastSeparator + 1);
+  }
+
+  /**
    * Applies the configured filter to the provided String.
    * <p>
    * The provided String is expected to be a valid {@link java.nio.file.Path}, otherwise an
