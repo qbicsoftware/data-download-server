@@ -150,8 +150,13 @@ public class MeasurementFileController {
         log.info("request %s: user %s finished downloading file %s of measurement %s".formatted(
             requestId, currentUser, fileInfo.path(), sanitizedId));
       } catch (Exception e) {
-        log.error("request %s: user %s failed for file %s of measurement %s".formatted(requestId,
-            currentUser, fileInfo.path(), sanitizedId), e);
+        if (isClientAbort(e)) {
+          log.warn("request %s: user %s disconnected while downloading file %s of measurement %s"
+              .formatted(requestId, currentUser, fileInfo.path(), sanitizedId));
+        } else {
+          log.error("request %s: user %s failed for file %s of measurement %s".formatted(requestId,
+              currentUser, fileInfo.path(), sanitizedId), e);
+        }
         throw e;
       }
     };
@@ -168,6 +173,31 @@ public class MeasurementFileController {
       return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT).headers(headers).body(responseBody);
     }
     return ResponseEntity.ok().headers(headers).body(responseBody);
+  }
+
+  /**
+   * Checks whether the given exception indicates that the client disconnected during streaming
+   * (e.g. CURL killed with Ctrl+C). These are not server errors and should not be logged as such.
+   * The check is container-agnostic and works with both Tomcat and Jetty.
+   */
+  private static boolean isClientAbort(Exception e) {
+    Throwable cause = e;
+    while (cause != null) {
+      // Check for well-known client abort exception types by name to avoid
+      // hard dependencies on a specific servlet container (Tomcat vs Jetty).
+      String className = cause.getClass().getName();
+      if (className.equals("org.apache.catalina.connector.ClientAbortException")
+          || className.equals("org.eclipse.jetty.io.EofException")) {
+        return true;
+      }
+      String message = cause.getMessage();
+      if (message != null && (message.contains("Broken pipe")
+          || message.contains("Connection reset by peer"))) {
+        return true;
+      }
+      cause = cause.getCause();
+    }
+    return false;
   }
 
   private void writeRange(DataFile dataFile, long start, long contentLength, OutputStream outputStream)

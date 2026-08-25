@@ -92,12 +92,20 @@ public class OpenBisConnector implements MeasurementFinder, MeasurementDataProvi
 
   @Override
   public DataFile loadFile(MeasurementId measurementId, FileInfo fileInfo) {
-    try (var session = sessionFactory.getSession()) {
+    // The session must stay alive until the returned InputStream has been fully consumed,
+    // because the stream is backed by an HTTP connection to the openBIS data store server
+    // that requires an active session. We wrap the stream in a SessionAwareInputStream so
+    // the session is released when the stream is closed (e.g. after the streaming response
+    // body has been written). Using try-with-resources here would close the session
+    // immediately, causing "Connection reset by peer" errors during large file downloads.
+    var session = sessionFactory.getSession();
+    try {
       List<DataSetPermId> dataSetPermIds = loadDataSetsForMeasurement(session, measurementId)
           .stream()
           .map(DataSet::getPermId)
           .toList();
       if (dataSetPermIds.isEmpty()) {
+        session.close();
         return null;
       }
       DataSetFile dataSetFile = searchFilesForMeasurement(session, dataSetPermIds).stream()
@@ -105,10 +113,14 @@ public class OpenBisConnector implements MeasurementFinder, MeasurementDataProvi
           .findFirst()
           .orElse(null);
       if (dataSetFile == null) {
+        session.close();
         return null;
       }
       InputStream inputStream = getInputStreamForFiles(session, List.of(dataSetFile.getPermId()));
-      return new DataFile(toFileInfo(dataSetFile), inputStream);
+      return new DataFile(toFileInfo(dataSetFile), new SessionAwareInputStream(inputStream, session));
+    } catch (RuntimeException e) {
+      session.close();
+      throw e;
     }
   }
 
