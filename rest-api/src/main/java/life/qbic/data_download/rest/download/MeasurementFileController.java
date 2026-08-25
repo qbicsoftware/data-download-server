@@ -10,11 +10,18 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import life.qbic.data_download.measurements.api.DataFile;
 import life.qbic.data_download.measurements.api.FileInfo;
@@ -200,9 +207,21 @@ public class MeasurementFileController {
     return false;
   }
 
+  /**
+   * Writes a byte range from the data file to the output stream using an async producer-consumer
+   * pattern. A dedicated producer thread reads from the DSS input stream into a bounded queue,
+   * while the consumer (calling thread) reads from the queue and writes to the client output stream.
+   *
+   * <p>This decoupling prevents slow clients from blocking DSS reads. Without this, a slow client
+   * would cause outputStream.write() to block, which in turn blocks inputStream.read(), causing
+   * the DSS TCP receive window to close and eventually the connection to be reset.
+   *
+   * <p>The bounded queue (16 buffers) provides backpressure: when the queue is full, the producer
+   * blocks, which naturally closes the TCP receive window and signals the DSS to slow down.
+   */
   private void writeRange(DataFile dataFile, long start, long contentLength, OutputStream outputStream,
       String filePath, String measurementId) throws IOException {
-    try (var inputStream = dataFile.inputStream()) {
+    try (InputStream inputStream = dataFile.inputStream()) {
       // InputStream.skip is not guaranteed to skip the requested number of bytes, so we loop until
       // the requested start offset is reached. When skip makes no progress (e.g. on some sources),
       // fall back to reading a single byte at a time so we never loop forever.
@@ -218,86 +237,95 @@ public class MeasurementFileController {
           skipped += skippedNow;
         }
       }
-      
-      byte[] buffer = new byte[downloadBufferSize];
-      long remaining = contentLength;
-      long totalBytesRead = 0;
-      long lastProgressLogTime = System.currentTimeMillis();
-      long lastIterationTime = System.currentTimeMillis();
-      int read;
-      
-      // Backpressure detection thresholds
-      long backpressureThresholdMs = 5000; // 5 seconds
-      long progressLogIntervalMs = 30000; // Log progress every 30 seconds
-      
-      // Track cumulative times for diagnostics
-      long totalReadTimeMs = 0;
-      long totalWriteTimeMs = 0;
-      long maxReadTimeMs = 0;
-      long maxWriteTimeMs = 0;
-      int slowReadCount = 0;
-      int slowWriteCount = 0;
-      
-      while (remaining > 0 && (read = inputStream.read(buffer, 0,
-          (int) Math.min(buffer.length, remaining))) != -1) {
-        
-        long afterReadTime = System.currentTimeMillis();
-        long readDurationMs = afterReadTime - lastIterationTime;
-        
-        // Detect upstream backpressure: DSS slow to send data
-        if (readDurationMs > backpressureThresholdMs) {
-          slowReadCount++;
-          log.warn("Upstream backpressure for file {} of measurement {}: DSS read took {}ms (threshold: {}ms), transferred {}MB / {}MB total",
-              filePath, measurementId, readDurationMs, backpressureThresholdMs,
-              totalBytesRead / (1024 * 1024), contentLength / (1024 * 1024));
+
+      // Bounded queue to decouple DSS read (producer) from client write (consumer).
+      // 16 buffers prevents memory explosion while providing enough buffering to absorb
+      // client write stalls without blocking the DSS read.
+      int queueCapacity = 16;
+      BlockingQueue<byte[]> bufferQueue = new ArrayBlockingQueue<>(queueCapacity);
+      AtomicReference<Throwable> producerError = new AtomicReference<>();
+      AtomicBoolean producerDone = new AtomicBoolean(false);
+
+      // Producer thread: reads from DSS input stream into the queue
+      Thread producer = new Thread(() -> {
+        try {
+          byte[] buffer = new byte[downloadBufferSize];
+          long remaining = contentLength;
+          int read;
+
+          while (remaining > 0 && (read = inputStream.read(buffer, 0,
+              (int) Math.min(buffer.length, remaining))) != -1) {
+            // Copy the data since the buffer will be reused
+            byte[] data = Arrays.copyOf(buffer, read);
+            // put() blocks if queue is full, providing backpressure to DSS
+            bufferQueue.put(data);
+            remaining -= read;
+          }
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          producerError.set(e);
+        } catch (Throwable e) {
+          producerError.set(e);
+        } finally {
+          producerDone.set(true);
         }
-        
-        totalReadTimeMs += readDurationMs;
-        maxReadTimeMs = Math.max(maxReadTimeMs, readDurationMs);
-        
-        outputStream.write(buffer, 0, read);
-        
-        long afterWriteTime = System.currentTimeMillis();
-        long writeDurationMs = afterWriteTime - afterReadTime;
-        
-        // Detect downstream backpressure: client slow to consume data
-        if (writeDurationMs > backpressureThresholdMs) {
-          slowWriteCount++;
-          log.warn("Downstream backpressure for file {} of measurement {}: client write took {}ms (threshold: {}ms), transferred {}MB / {}MB total",
-              filePath, measurementId, writeDurationMs, backpressureThresholdMs,
-              totalBytesRead / (1024 * 1024), contentLength / (1024 * 1024));
+      }, "dss-reader-" + filePath);
+
+      producer.start();
+
+      // Consumer (this thread): reads from queue and writes to client
+      try {
+        long totalBytesWritten = 0;
+        long lastProgressLogTime = System.currentTimeMillis();
+        long progressLogIntervalMs = 30000; // Log progress every 30 seconds
+        long pollTimeoutMs = 100; // Poll timeout for checking producer status
+
+        while (!producerDone.get() || !bufferQueue.isEmpty()) {
+          byte[] data = bufferQueue.poll(pollTimeoutMs, TimeUnit.MILLISECONDS);
+
+          if (data != null) {
+            outputStream.write(data);
+            totalBytesWritten += data.length;
+
+            // Periodic progress logging
+            long currentTime = System.currentTimeMillis();
+            if (currentTime - lastProgressLogTime > progressLogIntervalMs) {
+              double progressPercent = (totalBytesWritten * 100.0) / contentLength;
+              double elapsedSeconds = (currentTime - lastProgressLogTime) / 1000.0;
+              double throughputMBps = (totalBytesWritten / (1024.0 * 1024.0)) / elapsedSeconds;
+              log.info("Download progress for file {} of measurement {}: {}MB / {}MB ({}%), throughput: {} MB/s, queue size: {}",
+                  filePath, measurementId,
+                  totalBytesWritten / (1024 * 1024), contentLength / (1024 * 1024),
+                  String.format("%.1f", progressPercent),
+                  String.format("%.2f", throughputMBps),
+                  bufferQueue.size());
+              lastProgressLogTime = currentTime;
+            }
+          }
+
+          // Check for producer errors
+          Throwable error = producerError.get();
+          if (error != null) {
+            throw new IOException("DSS read failed for file " + filePath, error);
+          }
         }
-        
-        totalWriteTimeMs += writeDurationMs;
-        maxWriteTimeMs = Math.max(maxWriteTimeMs, writeDurationMs);
-        
-        totalBytesRead += read;
-        remaining -= read;
-        lastIterationTime = afterWriteTime;
-        
-        // Periodic progress logging
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - lastProgressLogTime > progressLogIntervalMs) {
-          double progressPercent = (totalBytesRead * 100.0) / contentLength;
-          double elapsedSeconds = (currentTime - lastProgressLogTime) / 1000.0;
-          double throughputMBps = (totalBytesRead / (1024.0 * 1024.0)) / elapsedSeconds;
-          log.info("Download progress for file {} of measurement {}: {}MB / {}MB ({}%), throughput: {} MB/s, slow reads: {}, slow writes: {}",
-              filePath, measurementId,
-              totalBytesRead / (1024 * 1024), contentLength / (1024 * 1024),
-              String.format("%.1f", progressPercent),
-              String.format("%.2f", throughputMBps),
-              slowReadCount, slowWriteCount);
-          lastProgressLogTime = currentTime;
+
+        // Final check for producer errors after completion
+        Throwable error = producerError.get();
+        if (error != null) {
+          throw new IOException("DSS read failed for file " + filePath, error);
         }
+
+        log.info("Transfer complete for file {} of measurement {}: {}MB total",
+            filePath, measurementId, totalBytesWritten / (1024 * 1024));
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        producer.interrupt();
+        throw new IOException("Download interrupted for file " + filePath, e);
+      } finally {
+        // Ensure producer thread is stopped
+        producer.interrupt();
       }
-      
-      // Final summary at end of transfer
-      log.info("Transfer complete for file {} of measurement {}: {}MB total, read time: {}ms (max: {}ms), write time: {}ms (max: {}ms), slow reads: {}, slow writes: {}",
-          filePath, measurementId,
-          totalBytesRead / (1024 * 1024),
-          totalReadTimeMs, maxReadTimeMs,
-          totalWriteTimeMs, maxWriteTimeMs,
-          slowReadCount, slowWriteCount);
     }
   }
 
