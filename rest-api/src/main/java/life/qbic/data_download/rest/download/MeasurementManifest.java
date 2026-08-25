@@ -55,7 +55,7 @@ public record MeasurementManifest(
    *
    * @param href the relative URL to download the file
    */
-  @Schema(description = "The download link of a file")
+  @Schema(description = "Download-related links of a file")
   public record Download(
       @Schema(description = "The relative URL to download the file", example = "/measurements/NGSQ0001006AO-25948529211108/files/0") String href) {
 
