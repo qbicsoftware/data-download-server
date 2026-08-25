@@ -29,10 +29,10 @@ public record MeasurementManifest(
   @Schema(description = "A single file entry in a manifest")
   public record FileEntry(
       @Schema(description = "The zero-based stable index of the file", example = "0") int index,
-      @Schema(description = "The formatted path of the file") String path,
-      @Schema(description = "The name of the file") String fileName,
+      @Schema(description = "The formatted path of the file", example = "data/read1.fastq.gz") String path,
+      @Schema(description = "The name of the file", example = "read1.fastq.gz") String fileName,
       @Schema(description = "The size of the file in bytes", example = "1048576") long length,
-      @Schema(description = "The CRC-32 checksum of the file content") long crc32,
+      @Schema(description = "The CRC-32 checksum of the file content", example = "123456789") long crc32,
       @Schema(description = "The time the file was registered in the system as an ISO-8601 formatted date-time in UTC",
           example = "2024-01-15T10:30:00Z", type = "string", format = "date-time") String registrationTime,
       @JsonProperty("_links") @Schema(description = "Links to related resources for the file entry") Links links) {
