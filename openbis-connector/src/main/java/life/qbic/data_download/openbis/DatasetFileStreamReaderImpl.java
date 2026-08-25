@@ -64,7 +64,7 @@ public class DatasetFileStreamReaderImpl implements MeasurementDataReader {
         .toEpochMilli() : -1;
 
     var cleanedPath = formatter.format(fileDownload.getDataSetFile().getPath());
-    var fileName = cleanedPath.substring(cleanedPath.lastIndexOf('/'));
+    var fileName = PathFormatter.fileNameOf(cleanedPath);
 
     FileInfo fileInfo = new FileInfo(cleanedPath,
         fileName,
