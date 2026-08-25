@@ -22,8 +22,10 @@ public class AppConfig {
   public OpenBisConnector openBisConnector(
       @Qualifier("openbisSessionFactory") SessionFactory sessionFactory,
       @Value("${openbis.server.application.url}") String applicationServerUrl,
-      @Value("${openbis.server.datastore.urls}") List<String> dataStoreServerUrls) {
-    return new OpenBisConnector(sessionFactory, applicationServerUrl, dataStoreServerUrls);
+      @Value("${openbis.server.datastore.urls}") List<String> dataStoreServerUrls,
+      @Value("${openbis.filename.ignored-prefix}") String ignoredPrefix) {
+    return new OpenBisConnector(sessionFactory, applicationServerUrl, dataStoreServerUrls,
+        ignoredPrefix);
   }
 
   @Bean("openbisSessionFactory")

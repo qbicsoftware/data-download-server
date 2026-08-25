@@ -134,7 +134,9 @@ public class GlobalException extends RuntimeException {
   public enum ErrorCode {
     ILLEGAL_MEASUREMENT_ID,
     GENERAL,
-    MEASUREMENT_NOT_FOUND;
+    MEASUREMENT_NOT_FOUND,
+    FILE_NOT_FOUND,
+    RANGE_NOT_SATISFIABLE;
 
     @Override
     public String toString() {

@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 import java.util.UUID;
@@ -32,8 +33,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.AuthorizationServiceException;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,15 +41,15 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 
 @RestController
 @Tag(name = "Download Endpoints", description = "Rest endpoints related to downloading data")
-public class DownloadController {
+public class MeasurementZipDownloadController {
 
   private final MeasurementDataProvider measurementDataProvider;
   private final MeasurementDataReaderFactory measurementDataReaderFactory;
   private final int downloadBufferSize;
 
-  private static final Logger log = getLogger(DownloadController.class);
+  private static final Logger log = getLogger(MeasurementZipDownloadController.class);
 
-  public DownloadController(
+  public MeasurementZipDownloadController(
       @Qualifier("measurementDataProvider") MeasurementDataProvider measurementDataProvider,
       @Qualifier("measurementDataReaderFactory") MeasurementDataReaderFactory measurementDataReaderFactory,
       @Value("${server.memory.download.buffer}") Integer downloadBufferSize) {
@@ -72,11 +71,7 @@ public class DownloadController {
   public ResponseEntity<StreamingResponseBody> downloadMeasurement(
       @PathVariable("measurementId") String measurementId) {
     var sanitizedId = sanitizeMeasurementId(measurementId);
-    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-    if (authentication == null) {
-      throw new AuthorizationServiceException("No authorization found.");
-    }
-    String currentUser = authentication.getName();
+    String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
     var requestId = "downloadMeasurement-" + UUID.randomUUID();
     log.info("request %s: user %s requests measurement %s".formatted(requestId, currentUser,
         sanitizedId));
@@ -88,7 +83,7 @@ public class DownloadController {
     }
     String outputFileName =
         sanitizedId + "-"
-            + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd.hhmmss"))
+            + LocalDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyy-MM-dd.hhmmss"))
             + ".zip";
 
     StreamingResponseBody responseBody = outputStream -> {
