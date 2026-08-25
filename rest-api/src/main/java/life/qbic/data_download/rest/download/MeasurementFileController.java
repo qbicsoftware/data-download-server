@@ -63,17 +63,23 @@ public class MeasurementFileController {
   private final MeasurementFileIndex measurementFileIndex;
   private final ByteRange byteRange;
   private final int downloadBufferSize;
+  private final int downloadQueueCapacity;
+
+  private static final int DEFAULT_QUEUE_CAPACITY = 64;
 
   public MeasurementFileController(
       @Qualifier("measurementDataProvider") MeasurementDataProvider measurementDataProvider,
       MeasurementFileIndex measurementFileIndex,
       ByteRange byteRange,
-      @Value("${server.memory.download.buffer}") Integer downloadBufferSize) {
+      @Value("${server.memory.download.buffer}") Integer downloadBufferSize,
+      @Value("${server.download.queue.capacity}") Integer downloadQueueCapacity) {
     this.measurementDataProvider = measurementDataProvider;
     this.measurementFileIndex = measurementFileIndex;
     this.byteRange = byteRange;
     this.downloadBufferSize = Optional.ofNullable(downloadBufferSize)
         .orElse(DEFAULT_BUFFER_SIZE);
+    this.downloadQueueCapacity = Optional.ofNullable(downloadQueueCapacity)
+        .orElse(DEFAULT_QUEUE_CAPACITY);
   }
 
   @GetMapping(value = {"/measurements/{measurementId}/files/", "/measurements/{measurementId}/files"}, produces = MediaType.APPLICATION_JSON_VALUE)
@@ -239,9 +245,9 @@ public class MeasurementFileController {
       }
 
       // Bounded queue to decouple DSS read (producer) from client write (consumer).
-      // 16 buffers prevents memory explosion while providing enough buffering to absorb
-      // client write stalls without blocking the DSS read.
-      int queueCapacity = 16;
+      // Configurable capacity (default: 64 buffers) prevents memory explosion while
+      // providing enough buffering to absorb client write stalls without blocking the DSS read.
+      int queueCapacity = downloadQueueCapacity;
       BlockingQueue<byte[]> bufferQueue = new ArrayBlockingQueue<>(queueCapacity);
       AtomicReference<Throwable> producerError = new AtomicReference<>();
       AtomicBoolean producerDone = new AtomicBoolean(false);
