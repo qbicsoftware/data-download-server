@@ -223,43 +223,81 @@ public class MeasurementFileController {
       long remaining = contentLength;
       long totalBytesRead = 0;
       long lastProgressLogTime = System.currentTimeMillis();
-      long lastReadTime = System.currentTimeMillis();
+      long lastIterationTime = System.currentTimeMillis();
       int read;
       
-      // Backpressure detection: if a read takes longer than this threshold, log a warning
+      // Backpressure detection thresholds
       long backpressureThresholdMs = 5000; // 5 seconds
       long progressLogIntervalMs = 30000; // Log progress every 30 seconds
+      
+      // Track cumulative times for diagnostics
+      long totalReadTimeMs = 0;
+      long totalWriteTimeMs = 0;
+      long maxReadTimeMs = 0;
+      long maxWriteTimeMs = 0;
+      int slowReadCount = 0;
+      int slowWriteCount = 0;
       
       while (remaining > 0 && (read = inputStream.read(buffer, 0,
           (int) Math.min(buffer.length, remaining))) != -1) {
         
-        long currentTime = System.currentTimeMillis();
-        long readDurationMs = currentTime - lastReadTime;
+        long afterReadTime = System.currentTimeMillis();
+        long readDurationMs = afterReadTime - lastIterationTime;
         
-        // Detect backpressure: if read took too long, log warning
+        // Detect upstream backpressure: DSS slow to send data
         if (readDurationMs > backpressureThresholdMs) {
-          log.warn("Backpressure detected for file {} of measurement {}: read took {}ms (threshold: {}ms), transferred {}MB / {}MB total",
+          slowReadCount++;
+          log.warn("Upstream backpressure for file {} of measurement {}: DSS read took {}ms (threshold: {}ms), transferred {}MB / {}MB total",
               filePath, measurementId, readDurationMs, backpressureThresholdMs,
               totalBytesRead / (1024 * 1024), contentLength / (1024 * 1024));
         }
         
+        totalReadTimeMs += readDurationMs;
+        maxReadTimeMs = Math.max(maxReadTimeMs, readDurationMs);
+        
         outputStream.write(buffer, 0, read);
+        
+        long afterWriteTime = System.currentTimeMillis();
+        long writeDurationMs = afterWriteTime - afterReadTime;
+        
+        // Detect downstream backpressure: client slow to consume data
+        if (writeDurationMs > backpressureThresholdMs) {
+          slowWriteCount++;
+          log.warn("Downstream backpressure for file {} of measurement {}: client write took {}ms (threshold: {}ms), transferred {}MB / {}MB total",
+              filePath, measurementId, writeDurationMs, backpressureThresholdMs,
+              totalBytesRead / (1024 * 1024), contentLength / (1024 * 1024));
+        }
+        
+        totalWriteTimeMs += writeDurationMs;
+        maxWriteTimeMs = Math.max(maxWriteTimeMs, writeDurationMs);
+        
         totalBytesRead += read;
         remaining -= read;
-        lastReadTime = System.currentTimeMillis();
+        lastIterationTime = afterWriteTime;
         
         // Periodic progress logging
+        long currentTime = System.currentTimeMillis();
         if (currentTime - lastProgressLogTime > progressLogIntervalMs) {
           double progressPercent = (totalBytesRead * 100.0) / contentLength;
-          double throughputMBps = (totalBytesRead / (1024.0 * 1024.0)) / ((currentTime - lastProgressLogTime) / 1000.0);
-          log.info("Download progress for file {} of measurement {}: {}MB / {}MB ({}%), throughput: {} MB/s",
+          double elapsedSeconds = (currentTime - lastProgressLogTime) / 1000.0;
+          double throughputMBps = (totalBytesRead / (1024.0 * 1024.0)) / elapsedSeconds;
+          log.info("Download progress for file {} of measurement {}: {}MB / {}MB ({}%), throughput: {} MB/s, slow reads: {}, slow writes: {}",
               filePath, measurementId,
               totalBytesRead / (1024 * 1024), contentLength / (1024 * 1024),
               String.format("%.1f", progressPercent),
-              String.format("%.2f", throughputMBps));
+              String.format("%.2f", throughputMBps),
+              slowReadCount, slowWriteCount);
           lastProgressLogTime = currentTime;
         }
       }
+      
+      // Final summary at end of transfer
+      log.info("Transfer complete for file {} of measurement {}: {}MB total, read time: {}ms (max: {}ms), write time: {}ms (max: {}ms), slow reads: {}, slow writes: {}",
+          filePath, measurementId,
+          totalBytesRead / (1024 * 1024),
+          totalReadTimeMs, maxReadTimeMs,
+          totalWriteTimeMs, maxWriteTimeMs,
+          slowReadCount, slowWriteCount);
     }
   }
 
