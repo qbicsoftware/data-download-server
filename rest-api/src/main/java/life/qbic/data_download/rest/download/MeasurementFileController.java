@@ -58,6 +58,8 @@ public class MeasurementFileController {
 
   private static final Pattern MEASUREMENT_ID_PATTERN = Pattern.compile("[^a-zA-Z0-9-]+");
   private static final int DEFAULT_BUFFER_SIZE = 1024 * 1024; //1 MB buffer
+  private static final long PROGRESS_LOG_INTERVAL_MS = 30_000; // Log progress every 30 seconds
+  private static final long POLL_TIMEOUT_MS = 100; // Poll timeout for checking producer status
 
   private final MeasurementDataProvider measurementDataProvider;
   private final MeasurementFileIndex measurementFileIndex;
@@ -222,115 +224,144 @@ public class MeasurementFileController {
    * would cause outputStream.write() to block, which in turn blocks inputStream.read(), causing
    * the DSS TCP receive window to close and eventually the connection to be reset.
    *
-   * <p>The bounded queue (16 buffers) provides backpressure: when the queue is full, the producer
-   * blocks, which naturally closes the TCP receive window and signals the DSS to slow down.
+   * <p>The bounded queue provides backpressure: when the queue is full, the producer blocks, which
+   * naturally closes the TCP receive window and signals the DSS to slow down.
    */
   private void writeRange(DataFile dataFile, long start, long contentLength, OutputStream outputStream,
       String filePath, String measurementId) throws IOException {
     try (InputStream inputStream = dataFile.inputStream()) {
-      // InputStream.skip is not guaranteed to skip the requested number of bytes, so we loop until
-      // the requested start offset is reached. When skip makes no progress (e.g. on some sources),
-      // fall back to reading a single byte at a time so we never loop forever.
-      long skipped = 0;
-      while (skipped < start) {
-        long skippedNow = inputStream.skip(start - skipped);
-        if (skippedNow <= 0) {
-          if (inputStream.read() == -1) {
-            break;
-          }
-          skipped++;
-        } else {
-          skipped += skippedNow;
-        }
-      }
-
-      // Bounded queue to decouple DSS read (producer) from client write (consumer).
-      // Configurable capacity (default: 64 buffers) prevents memory explosion while
-      // providing enough buffering to absorb client write stalls without blocking the DSS read.
-      int queueCapacity = downloadQueueCapacity;
-      BlockingQueue<byte[]> bufferQueue = new ArrayBlockingQueue<>(queueCapacity);
-      AtomicReference<Throwable> producerError = new AtomicReference<>();
-      AtomicBoolean producerDone = new AtomicBoolean(false);
-
-      // Producer thread: reads from DSS input stream into the queue
-      Thread producer = new Thread(() -> {
-        try {
-          byte[] buffer = new byte[downloadBufferSize];
-          long remaining = contentLength;
-          int read;
-
-          while (remaining > 0 && (read = inputStream.read(buffer, 0,
-              (int) Math.min(buffer.length, remaining))) != -1) {
-            // Copy the data since the buffer will be reused
-            byte[] data = Arrays.copyOf(buffer, read);
-            // put() blocks if queue is full, providing backpressure to DSS
-            bufferQueue.put(data);
-            remaining -= read;
-          }
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-          producerError.set(e);
-        } catch (Throwable e) {
-          producerError.set(e);
-        } finally {
-          producerDone.set(true);
-        }
-      }, "dss-reader-" + filePath);
-
-      producer.start();
-
-      // Consumer (this thread): reads from queue and writes to client
+      skipToStart(inputStream, start);
+      Transfer transfer = startProducer(inputStream, contentLength, filePath);
       try {
-        long totalBytesWritten = 0;
-        long lastProgressLogTime = System.currentTimeMillis();
-        long progressLogIntervalMs = 30000; // Log progress every 30 seconds
-        long pollTimeoutMs = 100; // Poll timeout for checking producer status
+        consume(transfer, outputStream, contentLength, filePath, measurementId);
+      } finally {
+        transfer.producer.interrupt();
+      }
+    }
+  }
 
-        while (!producerDone.get() || !bufferQueue.isEmpty()) {
-          byte[] data = bufferQueue.poll(pollTimeoutMs, TimeUnit.MILLISECONDS);
-
-          if (data != null) {
-            outputStream.write(data);
-            totalBytesWritten += data.length;
-
-            // Periodic progress logging
-            long currentTime = System.currentTimeMillis();
-            if (currentTime - lastProgressLogTime > progressLogIntervalMs) {
-              double progressPercent = (totalBytesWritten * 100.0) / contentLength;
-              double elapsedSeconds = (currentTime - lastProgressLogTime) / 1000.0;
-              double throughputMBps = (totalBytesWritten / (1024.0 * 1024.0)) / elapsedSeconds;
-              log.info("Download progress for file {} of measurement {}: {}MB / {}MB ({}%), throughput: {} MB/s, queue size: {}",
-                  filePath, measurementId,
-                  totalBytesWritten / (1024 * 1024), contentLength / (1024 * 1024),
-                  String.format("%.1f", progressPercent),
-                  String.format("%.2f", throughputMBps),
-                  bufferQueue.size());
-              lastProgressLogTime = currentTime;
-            }
-          }
-
-          // Check for producer errors
-          Throwable error = producerError.get();
-          if (error != null) {
-            throw new IOException("DSS read failed for file " + filePath, error);
-          }
+  /**
+   * Advances the stream to the requested start offset. {@link InputStream#skip} is not guaranteed
+   * to skip the requested number of bytes, so we loop until the offset is reached. When skip makes
+   * no progress (e.g. on some sources), fall back to reading a single byte at a time so we never
+   * loop forever.
+   */
+  private static void skipToStart(InputStream inputStream, long start) throws IOException {
+    long skipped = 0;
+    while (skipped < start) {
+      long skippedNow = inputStream.skip(start - skipped);
+      if (skippedNow <= 0) {
+        if (inputStream.read() == -1) {
+          break;
         }
+        skipped++;
+      } else {
+        skipped += skippedNow;
+      }
+    }
+  }
 
-        // Final check for producer errors after completion
-        Throwable error = producerError.get();
-        if (error != null) {
-          throw new IOException("DSS read failed for file " + filePath, error);
+  /**
+   * Starts a producer thread that reads from the DSS input stream into a bounded queue and returns
+   * the {@link Transfer} used by the consumer to drain it. The bounded queue decouples the DSS read
+   * (producer) from the client write (consumer); when it is full the producer blocks, providing
+   * backpressure to the DSS.
+   */
+  private Transfer startProducer(InputStream inputStream, long contentLength, String filePath) {
+    BlockingQueue<byte[]> bufferQueue = new ArrayBlockingQueue<>(downloadQueueCapacity);
+    AtomicReference<Throwable> producerError = new AtomicReference<>();
+    AtomicBoolean producerDone = new AtomicBoolean(false);
+    Thread producer = new Thread(() -> {
+      try {
+        byte[] buffer = new byte[downloadBufferSize];
+        long remaining = contentLength;
+        int read;
+        while (remaining > 0 && (read = inputStream.read(buffer, 0,
+            (int) Math.min(buffer.length, remaining))) != -1) {
+          // Copy the data since the buffer is reused for the next read
+          byte[] data = Arrays.copyOf(buffer, read);
+          // put() blocks if the queue is full, providing backpressure to the DSS
+          bufferQueue.put(data);
+          remaining -= read;
         }
-
-        log.info("Transfer complete for file {} of measurement {}: {}MB total",
-            filePath, measurementId, totalBytesWritten / (1024 * 1024));
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
-        producer.interrupt();
-        throw new IOException("Download interrupted for file " + filePath, e);
+        producerError.compareAndSet(null, e);
+      } catch (Throwable e) {
+        producerError.compareAndSet(null, e);
       } finally {
-        // Ensure producer thread is stopped
-        producer.interrupt();
+        producerDone.set(true);
+      }
+    }, "dss-reader-" + filePath);
+    producer.start();
+    return new Transfer(producer, bufferQueue, producerError, producerDone);
+  }
+
+  /** Drains the queue in the consumer (calling) thread, writing each buffer to the client. */
+  private void consume(Transfer transfer, OutputStream outputStream, long contentLength,
+      String filePath, String measurementId) throws IOException {
+    long totalBytesWritten = 0;
+    long lastProgressLogTime = System.currentTimeMillis();
+    try {
+      while (!transfer.done.get() || !transfer.queue.isEmpty()) {
+        byte[] data = transfer.queue.poll(POLL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        if (data != null) {
+          outputStream.write(data);
+          totalBytesWritten += data.length;
+          lastProgressLogTime = logProgress(totalBytesWritten, contentLength, lastProgressLogTime,
+              filePath, measurementId, transfer.queue.size());
+        }
+        transfer.throwIfFailed(filePath);
+      }
+      transfer.throwIfFailed(filePath);
+      log.info("Transfer complete for file {} of measurement {}: {}MB total",
+          filePath, measurementId, totalBytesWritten / (1024 * 1024));
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      transfer.producer.interrupt();
+      throw new IOException("Download interrupted for file " + filePath, e);
+    }
+  }
+
+  /** Logs download progress at most once per {@link #PROGRESS_LOG_INTERVAL_MS} and returns the
+   * updated last-logged timestamp. */
+  private static long logProgress(long totalBytesWritten, long contentLength, long lastProgressLogTime,
+      String filePath, String measurementId, int queueSize) {
+    long currentTime = System.currentTimeMillis();
+    if (currentTime - lastProgressLogTime <= PROGRESS_LOG_INTERVAL_MS) {
+      return lastProgressLogTime;
+    }
+    double progressPercent = (totalBytesWritten * 100.0) / contentLength;
+    double elapsedSeconds = (currentTime - lastProgressLogTime) / 1000.0;
+    double throughputMBps = (totalBytesWritten / (1024.0 * 1024.0)) / elapsedSeconds;
+    log.info("Download progress for file {} of measurement {}: {}MB / {}MB ({}%), throughput: {} MB/s, queue size: {}",
+        filePath, measurementId,
+        totalBytesWritten / (1024 * 1024), contentLength / (1024 * 1024),
+        String.format("%.1f", progressPercent),
+        String.format("%.2f", throughputMBps),
+        queueSize);
+    return currentTime;
+  }
+
+  /** Shared state handed to the consumer so it can coordinate with and drain the producer. */
+  private static final class Transfer {
+    final Thread producer;
+    final BlockingQueue<byte[]> queue;
+    final AtomicReference<Throwable> error;
+    final AtomicBoolean done;
+
+    Transfer(Thread producer, BlockingQueue<byte[]> queue,
+        AtomicReference<Throwable> error, AtomicBoolean done) {
+      this.producer = producer;
+      this.queue = queue;
+      this.error = error;
+      this.done = done;
+    }
+
+    void throwIfFailed(String filePath) throws IOException {
+      Throwable failure = error.get();
+      if (failure != null) {
+        throw new IOException("DSS read failed for file " + filePath, failure);
       }
     }
   }
