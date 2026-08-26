@@ -269,13 +269,15 @@ public class MeasurementFileController {
    * no progress (e.g. on some sources), fall back to reading a single byte at a time so we never
    * loop forever.
    *
-   * <p>When tracing is enabled, progress is logged in {@link #skipBufferSize}-sized steps so the
-   * logs confirm the skip advances in buffer-sized chunks rather than byte-by-byte.
+   * <p>When tracing is enabled, the log records how the stream is being skipped: whether
+   * {@link InputStream#skip} is honored (bulk discard, ideally of {@link #skipBufferSize} per call)
+   * or the per-byte {@link InputStream#read} fallback is used. This distinguishes efficient bulk
+   * skipping from the byte-by-byte slow path.
    */
   private void skipToStart(InputStream inputStream, long start) throws IOException {
-    log.trace("skipping to byte offset {} in steps of {} bytes", start, skipBufferSize);
+    log.trace("skipping to byte offset {} with skip buffer {} bytes", start, skipBufferSize);
     long skipped = 0;
-    long nextLogTarget = skipBufferSize;
+    long byteFallbackCount = 0;
     while (skipped < start) {
       long skippedNow = inputStream.skip(start - skipped);
       if (skippedNow <= 0) {
@@ -284,16 +286,14 @@ public class MeasurementFileController {
           break;
         }
         skipped++;
+        byteFallbackCount++;
       } else {
+        log.trace("skip() discarded {} bytes at offset {}", skippedNow, skipped);
         skipped += skippedNow;
       }
-      if (skipped >= nextLogTarget || skipped >= start) {
-        log.trace("skipped {} / {} bytes ({}%)",
-            skipped, start, String.format("%.1f", (skipped * 100.0) / start));
-        nextLogTarget = skipped + skipBufferSize;
-      }
     }
-    log.trace("finished skipping to byte offset {} of {}", skipped, start);
+    log.trace("finished skipping to byte offset {} of {}; used {} byte-by-byte reads",
+        skipped, start, byteFallbackCount);
   }
 
   /**
