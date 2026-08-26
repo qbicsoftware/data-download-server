@@ -298,7 +298,7 @@ public class MeasurementFileController {
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         producerError.compareAndSet(null, e);
-      } catch (Exception e) {
+      } catch (Exception|Error e) {
         producerError.compareAndSet(null, e);
       } finally {
         producerDone.set(true);
