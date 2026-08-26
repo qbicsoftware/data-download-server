@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -68,9 +69,11 @@ public class MeasurementFileController {
   private final int downloadQueueCapacity;
   private final long progressLogIntervalMs;
   private final int nearFullQueueCapacity;
+  private final int skipBufferSize;
 
   private static final int DEFAULT_QUEUE_CAPACITY = 64;
   private static final int DEFAULT_NEAR_FULL_QUEUE_LEFT = 3;
+  private static final int DEFAULT_SKIP_BUFFER_SIZE = 8 * 1024; // 8 KB, the BufferedInputStream default
 
   public MeasurementFileController(
       @Qualifier("measurementDataProvider") MeasurementDataProvider measurementDataProvider,
@@ -79,7 +82,8 @@ public class MeasurementFileController {
       @Value("${server.memory.download.buffer}") Integer downloadBufferSize,
       @Value("${server.download.queue.capacity}") Integer downloadQueueCapacity,
       @Value("${server.download.progress-log-interval:30000}") Long progressLogIntervalMs,
-      @Value("${server.download.near-full-queue-left:3}") Integer nearFullQueueLeft) {
+      @Value("${server.download.near-full-queue-left:3}") Integer nearFullQueueLeft,
+      @Value("${server.download.skip-buffer-size:8192}") Integer skipBufferSize) {
     this.measurementDataProvider = measurementDataProvider;
     this.measurementFileIndex = measurementFileIndex;
     this.byteRange = byteRange;
@@ -93,6 +97,9 @@ public class MeasurementFileController {
     this.nearFullQueueCapacity = Optional.ofNullable(nearFullQueueLeft)
         .filter(value -> value >= 0)
         .orElse(DEFAULT_NEAR_FULL_QUEUE_LEFT);
+    this.skipBufferSize = Optional.ofNullable(skipBufferSize)
+        .filter(value -> value > 0)
+        .orElse(DEFAULT_SKIP_BUFFER_SIZE);
   }
 
   @GetMapping(value = {"/measurements/{measurementId}/files/", "/measurements/{measurementId}/files"}, produces = MediaType.APPLICATION_JSON_VALUE)
@@ -241,7 +248,12 @@ public class MeasurementFileController {
   private void writeRange(DataFile dataFile, long start, long contentLength, OutputStream outputStream,
       String filePath, String measurementId) throws IOException {
     try (InputStream inputStream = dataFile.inputStream()) {
-      skipToStart(inputStream, start);
+      if (start > 0) {
+        // Buffer only during the skip so large offsets (e.g. 90% of a 139GB file) discard data in
+        // skipBufferSize chunks instead of byte-by-byte. The buffer is discarded here; the producer
+        // below reads the raw stream and keeps its backpressure behavior intact.
+        skipToStart(new BufferedInputStream(inputStream, skipBufferSize), start);
+      }
       Transfer transfer = startProducer(inputStream, contentLength, filePath);
       try {
         consume(transfer, outputStream, contentLength, filePath, measurementId);
