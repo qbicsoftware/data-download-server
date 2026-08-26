@@ -268,20 +268,32 @@ public class MeasurementFileController {
    * to skip the requested number of bytes, so we loop until the offset is reached. When skip makes
    * no progress (e.g. on some sources), fall back to reading a single byte at a time so we never
    * loop forever.
+   *
+   * <p>When tracing is enabled, progress is logged in {@link #skipBufferSize}-sized steps so the
+   * logs confirm the skip advances in buffer-sized chunks rather than byte-by-byte.
    */
-  private static void skipToStart(InputStream inputStream, long start) throws IOException {
+  private void skipToStart(InputStream inputStream, long start) throws IOException {
+    log.trace("skipping to byte offset {} in steps of {} bytes", start, skipBufferSize);
     long skipped = 0;
+    long nextLogTarget = skipBufferSize;
     while (skipped < start) {
       long skippedNow = inputStream.skip(start - skipped);
       if (skippedNow <= 0) {
         if (inputStream.read() == -1) {
+          log.trace("reached end of stream while skipping; stopped at byte {}", skipped);
           break;
         }
         skipped++;
       } else {
         skipped += skippedNow;
       }
+      if (skipped >= nextLogTarget || skipped >= start) {
+        log.trace("skipped {} / {} bytes ({}%)",
+            skipped, start, String.format("%.1f", (skipped * 100.0) / start));
+        nextLogTarget = skipped + skipBufferSize;
+      }
     }
+    log.trace("finished skipping to byte offset {} of {}", skipped, start);
   }
 
   /**
