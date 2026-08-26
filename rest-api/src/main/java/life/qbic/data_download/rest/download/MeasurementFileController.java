@@ -58,7 +58,7 @@ public class MeasurementFileController {
 
   private static final Pattern MEASUREMENT_ID_PATTERN = Pattern.compile("[^a-zA-Z0-9-]+");
   private static final int DEFAULT_BUFFER_SIZE = 1024 * 1024; //1 MB buffer
-  private static final long PROGRESS_LOG_INTERVAL_MS = 30_000; // Log progress every 30 seconds
+  private static final long DEFAULT_PROGRESS_LOG_INTERVAL_MS = 30_000; // Log progress every 30 seconds
   private static final long POLL_TIMEOUT_MS = 100; // Poll timeout for checking producer status
 
   private final MeasurementDataProvider measurementDataProvider;
@@ -66,15 +66,20 @@ public class MeasurementFileController {
   private final ByteRange byteRange;
   private final int downloadBufferSize;
   private final int downloadQueueCapacity;
+  private final long progressLogIntervalMs;
+  private final int nearFullQueueCapacity;
 
   private static final int DEFAULT_QUEUE_CAPACITY = 64;
+  private static final int DEFAULT_NEAR_FULL_QUEUE_LEFT = 3;
 
   public MeasurementFileController(
       @Qualifier("measurementDataProvider") MeasurementDataProvider measurementDataProvider,
       MeasurementFileIndex measurementFileIndex,
       ByteRange byteRange,
       @Value("${server.memory.download.buffer}") Integer downloadBufferSize,
-      @Value("${server.download.queue.capacity}") Integer downloadQueueCapacity) {
+      @Value("${server.download.queue.capacity}") Integer downloadQueueCapacity,
+      @Value("${server.download.progress-log-interval:30000}") Long progressLogIntervalMs,
+      @Value("${server.download.near-full-queue-left:3}") Integer nearFullQueueLeft) {
     this.measurementDataProvider = measurementDataProvider;
     this.measurementFileIndex = measurementFileIndex;
     this.byteRange = byteRange;
@@ -82,6 +87,12 @@ public class MeasurementFileController {
         .orElse(DEFAULT_BUFFER_SIZE);
     this.downloadQueueCapacity = Optional.ofNullable(downloadQueueCapacity)
         .orElse(DEFAULT_QUEUE_CAPACITY);
+    this.progressLogIntervalMs = Optional.ofNullable(progressLogIntervalMs)
+        .filter(value -> value > 0)
+        .orElse(DEFAULT_PROGRESS_LOG_INTERVAL_MS);
+    this.nearFullQueueCapacity = Optional.ofNullable(nearFullQueueLeft)
+        .filter(value -> value >= 0)
+        .orElse(DEFAULT_NEAR_FULL_QUEUE_LEFT);
   }
 
   @GetMapping(value = {"/measurements/{measurementId}/files/", "/measurements/{measurementId}/files"}, produces = MediaType.APPLICATION_JSON_VALUE)
@@ -310,6 +321,7 @@ public class MeasurementFileController {
           outputStream.write(data);
           totalBytesWritten += data.length;
           bytesSinceLastLog += data.length;
+          logNearFullQueue(transfer, filePath, measurementId);
           long[] result = logProgress(totalBytesWritten, bytesSinceLastLog, contentLength,
               lastProgressLogTime, filePath, measurementId, transfer.queue.size());
           lastProgressLogTime = result[0];
@@ -327,14 +339,27 @@ public class MeasurementFileController {
     }
   }
 
-  /** Logs download progress at most once per {@link #PROGRESS_LOG_INTERVAL_MS}. Throughput is
+  /**
+   * Logs a warning whenever the bounded queue has fewer than {@link #nearFullQueueCapacity} free
+   * slots. A repeatedly near-full queue indicates the consumer (client write) cannot keep up with
+   * the producer (DSS read), which is a precursor to backpressure stalling the download.
+   */
+  private void logNearFullQueue(Transfer transfer, String filePath, String measurementId) {
+    int freeCapacity = downloadQueueCapacity - transfer.queue.size();
+    if (freeCapacity < nearFullQueueCapacity) {
+      log.warn("Download queue nearly full for file {} of measurement {}: {} of {} slots free",
+          filePath, measurementId, freeCapacity, downloadQueueCapacity);
+    }
+  }
+
+  /** Logs download progress at most once per {@link #progressLogIntervalMs}. Throughput is
    * computed from the bytes written in the current interval only, so it reflects the actual recent
    * transfer rate rather than the cumulative average. Returns the updated {@code {lastProgressLogTime,
    * bytesSinceLastLog}} so the caller can reset its interval counters when a log was emitted. */
-  private static long[] logProgress(long totalBytesWritten, long bytesSinceLastLog, long contentLength,
+  private long[] logProgress(long totalBytesWritten, long bytesSinceLastLog, long contentLength,
       long lastProgressLogTime, String filePath, String measurementId, int queueSize) {
     long currentTime = System.currentTimeMillis();
-    if (currentTime - lastProgressLogTime <= PROGRESS_LOG_INTERVAL_MS) {
+    if (currentTime - lastProgressLogTime <= progressLogIntervalMs) {
       return new long[]{lastProgressLogTime, bytesSinceLastLog};
     }
     double progressPercent = (totalBytesWritten * 100.0) / contentLength;
