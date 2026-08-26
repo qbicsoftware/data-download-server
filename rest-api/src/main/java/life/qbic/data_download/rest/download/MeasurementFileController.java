@@ -301,6 +301,7 @@ public class MeasurementFileController {
   private void consume(Transfer transfer, OutputStream outputStream, long contentLength,
       String filePath, String measurementId) throws IOException {
     long totalBytesWritten = 0;
+    long bytesSinceLastLog = 0;
     long lastProgressLogTime = System.currentTimeMillis();
     try {
       while (!transfer.done.get() || !transfer.queue.isEmpty()) {
@@ -308,8 +309,11 @@ public class MeasurementFileController {
         if (data != null) {
           outputStream.write(data);
           totalBytesWritten += data.length;
-          lastProgressLogTime = logProgress(totalBytesWritten, contentLength, lastProgressLogTime,
-              filePath, measurementId, transfer.queue.size());
+          bytesSinceLastLog += data.length;
+          long[] result = logProgress(totalBytesWritten, bytesSinceLastLog, contentLength,
+              lastProgressLogTime, filePath, measurementId, transfer.queue.size());
+          lastProgressLogTime = result[0];
+          bytesSinceLastLog = result[1];
         }
         transfer.throwIfFailed(filePath);
       }
@@ -323,24 +327,26 @@ public class MeasurementFileController {
     }
   }
 
-  /** Logs download progress at most once per {@link #PROGRESS_LOG_INTERVAL_MS} and returns the
-   * updated last-logged timestamp. */
-  private static long logProgress(long totalBytesWritten, long contentLength, long lastProgressLogTime,
-      String filePath, String measurementId, int queueSize) {
+  /** Logs download progress at most once per {@link #PROGRESS_LOG_INTERVAL_MS}. Throughput is
+   * computed from the bytes written in the current interval only, so it reflects the actual recent
+   * transfer rate rather than the cumulative average. Returns the updated {@code {lastProgressLogTime,
+   * bytesSinceLastLog}} so the caller can reset its interval counters when a log was emitted. */
+  private static long[] logProgress(long totalBytesWritten, long bytesSinceLastLog, long contentLength,
+      long lastProgressLogTime, String filePath, String measurementId, int queueSize) {
     long currentTime = System.currentTimeMillis();
     if (currentTime - lastProgressLogTime <= PROGRESS_LOG_INTERVAL_MS) {
-      return lastProgressLogTime;
+      return new long[]{lastProgressLogTime, bytesSinceLastLog};
     }
     double progressPercent = (totalBytesWritten * 100.0) / contentLength;
     double elapsedSeconds = (currentTime - lastProgressLogTime) / 1000.0;
-    double throughputMBps = (totalBytesWritten / (1024.0 * 1024.0)) / elapsedSeconds;
+    double throughputMBps = (bytesSinceLastLog / (1024.0 * 1024.0)) / elapsedSeconds;
     log.info("Download progress for file {} of measurement {}: {}MB / {}MB ({}%), throughput: {} MB/s, queue size: {}",
         filePath, measurementId,
         totalBytesWritten / (1024 * 1024), contentLength / (1024 * 1024),
         String.format("%.1f", progressPercent),
         String.format("%.2f", throughputMBps),
         queueSize);
-    return currentTime;
+    return new long[]{currentTime, 0};
   }
 
   /** Shared state handed to the consumer so it can coordinate with and drain the producer. */
