@@ -53,25 +53,33 @@ Implement a provider abstraction layer that:
 │                         │                                    │
 │                         ▼                                    │
 │  ┌──────────────────────────────────────────────────────┐  │
-│  │  StorageProvider Interface                           │  │
+│  │  StorageProvider Interface (lean)                    │  │
 │  │  - listFiles(datasetId)                              │  │
 │  │  - getFile(datasetId, index, range)                  │  │
 │  │  - getFileSize(datasetId, index)                     │  │
 │  │  - getFileMetadata(datasetId, index)                 │  │
 │  └──────────────────────────────────────────────────────┘  │
-│       │                    │                    │            │
-│       ▼                    ▼                    ▼            │
-│  ┌─────────┐         ┌─────────┐         ┌─────────┐      │
-│  │OpenBIS  │         │   NFS   │         │   S3    │      │
-│  │Provider │         │Provider │         │Provider │      │
-│  │(Adapter)│         │(Direct) │         │(Direct) │      │
-│  └─────────┘         └─────────┘         └─────────┘      │
+│       │              │               │                     │
+│       │       ┌──────┴──────┐  ┌─────┴──────┐              │
+│       │       │FilePath     │  │PresignedUrl│              │
+│       │       │Provider (I/F)│  │Provider(I/F)│             │
+│       │       └──────┬──────┘  └─────┬──────┘              │
+│       │              │               │                     │
+│       ▼              ▼               ▼                     │
+│  ┌─────────┐   ┌─────────┐     ┌─────────┐               │
+│  │OpenBIS  │   │   NFS   │     │   S3    │               │
+│  │Provider │   │Provider │     │Provider │               │
+│  │(Adapter)│   │(Direct) │     │(Direct) │               │
+│  │         │   │+Path    │     │+Presigned              │
+│  └─────────┘   └─────────┘     └─────────┘               │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ### Component Details
 
 #### 1. StorageProvider Interface
+
+The core interface is kept **lean** by applying the Interface Segregation Principle (ISP): only the methods every provider must implement live here. Optional capabilities are split into separate role interfaces that providers implement only when they support them.
 
 ```java
 public interface StorageProvider {
@@ -80,40 +88,57 @@ public interface StorageProvider {
      * The order must be consistent across calls for the same dataset.
      */
     List<FileInfo> listFiles(String datasetId);
-    
+
     /**
      * Get a file by its index (from the ordered list returned by listFiles).
      * Supports byte-range requests for resumable downloads.
      */
     DataFile getFile(String datasetId, int index, ByteRange range);
-    
+
     /**
      * Get file size without opening the file.
      */
     long getFileSize(String datasetId, int index);
-    
+
     /**
      * Get file metadata (size, CRC32, timestamps, etc.).
      */
     FileInfo getFileMetadata(String datasetId, int index);
-    
-    /**
-     * Optional: Get direct file path for NIO operations.
-     * Only supported by filesystem-based providers (NFS, local mount).
-     */
-    default Optional<Path> getFilePath(String datasetId, int index) {
-        return Optional.empty();
-    }
-    
-    /**
-     * Optional: Get pre-signed URL for direct client access.
-     * Only supported by cloud storage providers (S3, Azure Blob).
-     */
-    default Optional<String> getPresignedUrl(String datasetId, int index, ByteRange range) {
-        return Optional.empty();
-    }
 }
 ```
+
+**File identity.** Files are addressed by their **index** within the stable, deterministic order returned by `listFiles()`. Because that order is guaranteed consistent for a given dataset (and cached via the `MeasurementFileIndex`), index-based addressing is reliable within the cache lifetime and keeps the interface backward-compatible with the existing client contract.
+
+**Capability interfaces** — implemented by providers that support them, never the other way around:
+
+```java
+/**
+ * Filesystem-backed providers (NFS, local mount).
+ * Enables direct NIO operations.
+ */
+public interface FilePathProvider {
+    Optional<Path> getFilePath(String datasetId, int index);
+}
+
+/**
+ * Cloud-backed providers (S3, Azure Blob).
+ * Enables direct client access via pre-signed URLs.
+ */
+public interface PresignedUrlProvider {
+    PresignedUrl getPresignedUrl(String datasetId, int index, ByteRange range)
+            throws UrlGenerationException;
+}
+```
+
+The optional capability methods are **removed from the core interface** entirely. Consumers detect capabilities with pattern matching instead of default methods:
+
+```java
+if (provider instanceof FilePathProvider fp) {
+    fp.getFilePath(datasetId, index)   // direct NIO access
+}
+```
+
+This means a provider is never forced to depend on a capability it doesn't use, and the capability set is **open-ended** — a future provider can implement a new role interface (e.g. `MultipartUploadProvider`) without touching the core contract.
 
 #### 2. DataFile Interface
 
@@ -124,7 +149,7 @@ public interface DataFile {
      * For byte-range requests, the stream starts at the range offset.
      */
     InputStream inputStream() throws IOException;
-    
+
     /**
      * Get file metadata.
      */
@@ -132,26 +157,60 @@ public interface DataFile {
 }
 ```
 
-#### 3. Provider Implementations
+#### 3. Exception Taxonomy
+
+The retry strategy (section 5) depends on a **well-defined exception hierarchy**, so it is specified as part of the interface contract:
+
+```
+StorageProviderException (checked, base)
+├── DatasetNotFoundException      // unknown datasetId
+├── FileNotFoundException        // unknown file index
+├── TransientException           // retryable: network, 502/503, connection reset
+│   ├── ProviderUnavailableException
+│   └── NetworkException
+├── InvalidByteRangeException    // malformed or out-of-bounds range (416)
+├── AuthorizationException       // caller not entitled to this dataset
+└── ProviderException            // permanent, non-retryable provider failure
+```
+
+**Contract:**
+- `TransientException` subclasses are the **only** retryable failures.
+- `DatasetNotFoundException` / `FileNotFoundException` are **permanent** (a 404 to the client, no retry).
+- `InvalidByteRangeException` is **permanent** (a 416 to the client).
+- The taxonomy is what makes the retry decorator testable — it must never catch a bare `Exception`.
+
+#### 4. ByteRange Contract
+
+Byte-range semantics must be explicit to avoid off-by-one corruption:
+
+- Ranges are **inclusive on both ends** (`start` to `end`, matching HTTP `Range`), so `bytes=0-99` returns exactly 100 bytes.
+- **Suffix ranges** (`bytes=-500`, last 500 bytes) are supported by all providers; non-native providers emulate them via NIO.
+- **Out-of-bounds / invalid** ranges throw `InvalidByteRangeException` (mapped to HTTP 416).
+- A `null` range means **the whole file**.
+
+#### 5. Provider Implementations
 
 **OpenBIS Provider (Adapter)**
 - Wraps existing `MeasurementDataProvider` code
 - Minimal changes to preserve working functionality
 - Returns `InputStream` from DSS HTTP API
+- Does **not** implement any capability interface
 
 **NFS Provider (Direct)**
 - Direct file I/O using Java NIO
+- Implements `StorageProvider` + `FilePathProvider`
 - Returns both `InputStream` and file `Path`
 - Optimal performance for mounted storage
 - No HTTP overhead
 
 **S3 Provider (Direct)**
 - Uses AWS SDK for S3 operations
+- Implements `StorageProvider` + `PresignedUrlProvider`
 - Returns `InputStream` from S3 GetObject
 - Can return pre-signed URLs for direct client access
 - Native byte-range support via S3 Range header
 
-#### 4. Provider Registry
+#### 6. Provider Registry
 
 ```java
 public interface ProviderRegistry {
@@ -182,7 +241,7 @@ public interface ProviderRegistry {
 - REST API for dataset-to-provider mapping
 - Caching for performance
 
-#### 5. Error Handling and Retry Strategy
+#### 7. Error Handling and Retry Strategy
 
 **Server-side retry (automatic)**:
 - Network timeouts between download server and provider
@@ -196,12 +255,13 @@ public interface ProviderRegistry {
 - Byte-range errors (invalid range)
 - Persistent errors after server retries exhausted
 
-**Implementation**:
+**Implementation** (uses the exception taxonomy from section 3 — only `TransientException` subclasses are retried, and backoff is non-blocking):
+
 ```java
 public class RetryableStorageProvider implements StorageProvider {
     private final StorageProvider delegate;
     private final int maxRetries = 3;
-    
+
     @Override
     public DataFile getFile(String datasetId, int index, ByteRange range) {
         for (int attempt = 0; attempt < maxRetries; attempt++) {
@@ -209,14 +269,16 @@ public class RetryableStorageProvider implements StorageProvider {
                 return delegate.getFile(datasetId, index, range);
             } catch (TransientException e) {
                 if (attempt == maxRetries - 1) throw e;
-                Thread.sleep(backoffDelay(attempt));
+                sleepNonBlocking(backoffDelay(attempt));   // async scheduler, not Thread.sleep
             }
         }
     }
 }
 ```
 
-#### 6. API Endpoints
+**Circuit breaker**: if a provider fails repeatedly, subsequent requests short-circuit to a fast-fail (`ProviderUnavailableException`) instead of each hitting the provider 3× with backoff.
+
+#### 8. API Endpoints
 
 **Keep existing endpoints** (backward compatible):
 - `GET /measurements/{measurementId}/files` - List files (JSON manifest)
@@ -227,14 +289,14 @@ public class RetryableStorageProvider implements StorageProvider {
 - Provider registry resolves which provider to use
 - No changes to client-facing API
 
-#### 7. Authorization
+#### 9. Authorization
 
 **No changes needed**:
 - Existing `QbicPermissionEvaluator` checks project-level permissions
 - Authorization happens before provider is accessed
 - Providers use service credentials (not user credentials) to access storage
 
-#### 8. Configuration
+#### 10. Configuration
 
 **Application properties** (`application.yml`):
 ```yaml
@@ -259,7 +321,7 @@ download:
   max-bandwidth-per-user: 1073741824  # 1Gbps
 ```
 
-#### 9. Logging and Monitoring
+#### 11. Logging and Monitoring
 
 **Initial implementation** (file-based):
 - Plain text logs for file output
@@ -556,9 +618,11 @@ Key benefits:
 ### A. Glossary
 
 - **Dataset**: A container with one or more files (currently called "measurement")
+- **Index**: The zero-based position of a file within the stable, ordered list returned by `listFiles()`
 - **Provider**: A storage backend implementation (openBIS, NFS, S3)
+- **Capability interface**: A role interface (`FilePathProvider`, `PresignedUrlProvider`) implemented only by providers that support the capability
 - **Registry**: Maps dataset IDs to storage providers
-- **Byte Range**: A subset of a file (e.g., bytes 1000-2000)
+- **Byte Range**: A subset of a file (e.g., bytes 1000-2000, inclusive on both ends; `bytes=-500` denotes the last 500 bytes)
 
 ### B. References
 
@@ -578,3 +642,6 @@ Key benefits:
 | Application properties config | Simple, standard Spring Boot approach | Database config (overkill) |
 | Unit tests only (for now) | Fast feedback, low maintenance | Integration tests (complex setup) |
 | File-based logging first | Simple, easy to implement | Full observability (overkill initially) |
+| Index-based core addressing | Matches existing client contract; stable within cache lifetime | FileId-based addressing (stable across source changes) |
+| Capability interfaces (ISP) | Lean core; providers implement only what they support; open-ended | Fat interface with default methods |
+| Exception taxonomy | Makes retry strategy testable and precise | Catch-all exception handling |
