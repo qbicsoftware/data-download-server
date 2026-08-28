@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the architecture for abstracting storage providers in the data download server. The goal is to support multiple storage backends (NFS, S3, openBIS DSS, etc.) through a unified provider interface while maintaining backward compatibility with existing clients.
+This document describes the architecture for abstracting storage providers in the data download server. The goal is to support multiple storage backends (NFS, S3, openBIS DSS, openBIS-backed NFS, etc.) through a unified provider interface while maintaining backward compatibility with existing clients.
 
 ## Problem Statement
 
@@ -66,13 +66,13 @@ Implement a provider abstraction layer that:
 │       │    └────┬────┘  └───┬────┘  └───┬────┘             │
 │       │         │           │           │                  │
 │       ▼         ▼           ▼           ▼                  │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐        │
-│  │OpenBIS  │ │   NFS   │ │   S3    │ │ (future)│        │
-│  │Provider │ │Provider │ │Provider │ │Provider │        │
-│  │(Adapter)│ │(Direct) │ │(Direct) │ │         │        │
-│  │+Range   │ │+Range   │ │+Range   │ │         │        │
-│  │         │ │+Path    │ │+Presigned│ │         │        │
-│  └─────────┘ └─────────┘ └─────────┘ └─────────┘        │
+│  ┌─────────┐ ┌────────────┐ ┌─────────┐ ┌─────────┐      │
+│  │OpenBIS  │ │OpenBIS-NFS │ │   NFS   │ │   S3    │      │
+│  │Provider │ │  Provider  │ │Provider │ │Provider │      │
+│  │(Adapter)│ │  (Hybrid)  │ │(Direct) │ │(Direct) │      │
+│  │+Range   │ │+Range      │ │+Range   │ │+Range   │      │
+│  │         │ │+Path       │ │+Path    │ │+Presigned│     │
+│  └─────────┘ └────────────┘ └─────────┘ └─────────┘      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -212,6 +212,14 @@ These semantics apply to providers that implement `ByteRangeProvider` (whole-fil
 - Implements `StorageProvider` + `ByteRangeProvider` (resumable downloads preserved)
 - Does **not** implement the other capability interfaces
 
+**OpenBIS-NFS Provider (Hybrid)**
+- Gets file metadata (list, order, sizes, checksums, timestamps) from openBIS, as the plain openBIS provider does
+- Resolves each file's **physical location** on the filesystem via openBIS (the `DataSetFile` path), instead of streaming through the DSS HTTP download API
+- Streams file content **directly from the mounted disc** using Java NIO, using openBIS only to look up where the file lives
+- Combines openBIS metadata with NFS streaming performance (no HTTP overhead, native byte-range)
+- Implements `StorageProvider` + `ByteRangeProvider` + `FilePathProvider`
+- Requires that the storage backing openBIS is mounted on the download server at the paths openBIS reports
+
 **NFS Provider (Direct)**
 - Direct file I/O using Java NIO
 - Implements `StorageProvider` + `ByteRangeProvider` + `FilePathProvider`
@@ -219,6 +227,7 @@ These semantics apply to providers that implement `ByteRangeProvider` (whole-fil
 - Byte-range via NIO positioning
 - Optimal performance for mounted storage
 - No HTTP overhead
+- Unlike openBIS-NFS, does **not** depend on openBIS for metadata or path resolution
 
 **S3 Provider (Direct)**
 - Uses AWS SDK for S3 operations
@@ -332,11 +341,40 @@ providers:
   openbis-1:
     type: openbis
     enabled: true
+    user:
+      name: ${OPENBIS_USER_NAME}
+      password: ${OPENBIS_USER_PASSWORD}
+    server:
+      application-url: ${OPENBIS_APPLICATION_URL}
+      datastore-urls: ${OPENBIS_DATASTORE_URLS}
+    filename:
+      ignored-prefix: ${OPENBIS_FILE_IGNORED_PREFIX:original}
     session-timeout: 3600
   openbis-2:
     type: openbis
     enabled: true
+    user:
+      name: ${OPENBIS_USER_NAME}
+      password: ${OPENBIS_USER_PASSWORD}
+    server:
+      application-url: ${OPENBIS_APPLICATION_URL}
+      datastore-urls: ${OPENBIS_DATASTORE_URLS}
+    filename:
+      ignored-prefix: ${OPENBIS_FILE_IGNORED_PREFIX:original}
     session-timeout: 3600
+  openbis-nfs-1:
+    type: openbis-nfs
+    enabled: true
+    user:
+      name: ${OPENBIS_USER_NAME}
+      password: ${OPENBIS_USER_PASSWORD}
+    server:
+      application-url: ${OPENBIS_APPLICATION_URL}
+      datastore-urls: ${OPENBIS_DATASTORE_URLS}
+    filename:
+      ignored-prefix: ${OPENBIS_FILE_IGNORED_PREFIX:original}
+    session-timeout: 3600
+    mount-path: /mnt/openbis-data
   nfs-1:
     type: nfs
     enabled: true
@@ -355,11 +393,16 @@ download:
 
 Multiple providers of the same type may be defined under distinct ids (e.g. two openBIS instances `openbis-1`, `openbis-2`). The `type` value determines the required property set:
 
-- **`openbis`**: `session-timeout` (session refresh interval for the DSS session)
+- **`openbis`**:
+  - `user.name`, `user.password` — service credentials for the DSS session
+  - `server.application-url`, `server.datastore-urls` — DSS connection endpoints
+  - `filename.ignored-prefix` — prefix stripped from file names (default `original`)
+  - `session-timeout` — session refresh interval (seconds)
+- **`openbis-nfs`**: all of the `openbis` properties above, plus `mount-path` (the root of the openBIS-backed storage mounted on the download server). Metadata and physical path resolution come from openBIS; file content is streamed directly from `mount-path`.
 - **`nfs`**: `mount-path` (root directory on the mounted filesystem)
 - **`s3`**: `bucket`, `region` (AWS credentials via the default credential chain)
 
-The registry looks up a dataset's provider by this id, then instantiates the matching type with the properties defined under that id.
+These properties are currently set at the top level under `openbis.*` in `application.properties`; with the provider abstraction they move under the `openbis` provider type, so each openBIS provider id carries its own connection settings. The registry looks up a dataset's provider by this id, then instantiates the matching type with the properties defined under that id.
 
 #### 11. Logging and Monitoring
 
@@ -417,20 +460,22 @@ The registry looks up a dataset's provider by this id, then instantiates the mat
 - Integration tests
 - Performance comparison report
 
-### Phase 3: NFS Provider (Week 5-6)
+### Phase 3: NFS-based Providers (Week 5-6)
 
-**Goal**: Implement NFS provider for direct file I/O
+**Goal**: Implement direct file I/O providers (NFS and openBIS-NFS)
 
 **Tasks**:
 1. Implement `NfsStorageProvider` with direct file I/O
-2. Support both `InputStream` and file `Path` access
-3. Implement byte-range support using NIO
-4. Integration tests with mounted NFS storage
-5. Performance testing (compare NFS vs openBIS)
+2. Implement `OpenBisNfsStorageProvider`: metadata and physical path resolution via openBIS, streaming from the mounted disc via NIO
+3. Support both `InputStream` and file `Path` access for both providers
+4. Implement byte-range support using NIO
+5. Integration tests with mounted NFS storage (plain and openBIS-backed)
+6. Performance testing (compare NFS / openBIS-NFS vs openBIS HTTP)
 
 **Deliverables**:
 - `NfsStorageProvider` implementation
-- NFS configuration
+- `OpenBisNfsStorageProvider` implementation
+- NFS and openBIS-NFS configuration
 - Integration tests
 - Performance benchmarks
 
@@ -659,9 +704,10 @@ Key benefits:
 
 - **Dataset**: A container with one or more files (currently called "measurement")
 - **Index**: The zero-based position of a file within the stable, ordered list returned by `listFiles()`
-- **Provider**: A configured storage backend instance, identified by a **provider id** and backed by a **type** implementation (openBIS, NFS, S3)
+- **Provider**: A configured storage backend instance, identified by a **provider id** and backed by a **type** implementation (openBIS, openBIS-NFS, NFS, S3)
 - **Provider id**: The unique key under `providers:` in `application.yml`; the id the `ProviderRegistry` maps datasets to (e.g. `openbis-1`)
 - **Provider type**: The implementation class selected by the `type` property, which determines the required configuration
+- **openBIS-NFS**: A hybrid provider type that reads metadata and resolves physical file locations via openBIS, but streams file content directly from the mounted disc via NFS
 - **Capability interface**: A role interface (`ByteRangeProvider`, `FilePathProvider`, `PresignedUrlProvider`) implemented only by providers that support the capability
 - **Registry**: Maps dataset IDs to provider ids
 - **Byte Range**: A subset of a file (e.g., bytes 1000-2000, inclusive on both ends; `bytes=-500` denotes the last 500 bytes)
@@ -688,3 +734,4 @@ Key benefits:
 | Capability interfaces (ISP) | Lean core; providers implement only what they support; open-ended | Fat interface with default methods |
 | Byte-range as capability | Whole-file and resumable providers share a lean core; range is opt-in | Range arg in the core getFile for all providers |
 | Exception taxonomy | Makes retry strategy testable and precise | Catch-all exception handling |
+| openbis-nfs hybrid type | Reuses openBIS metadata/path resolution with NFS streaming performance | Stream via DSS HTTP (slow) or NFS without openBIS metadata (loses checksums/order) |
