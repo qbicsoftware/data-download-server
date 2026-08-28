@@ -27,7 +27,7 @@ public interface StorageProvider {
    * @throws DatasetNotFoundException   if the dataset does not exist
    * @throws StorageProviderException   on any provider error
    */
-  List<FileInfo> listFiles(String datasetId);
+  List<FileInfo> listFiles(String datasetId) throws DatasetNotFoundException, StorageProviderException;
 
   /**
    * Streams a file by its index within the ordered list returned by {@link #listFiles(String)}.
@@ -40,7 +40,8 @@ public interface StorageProvider {
    * @throws StorageFileNotFoundException    if no file exists at the given index
    * @throws StorageProviderException        on any provider error
    */
-  DataFile getFile(String datasetId, int index);
+  DataFile getFile(String datasetId, int index)
+      throws DatasetNotFoundException, StorageFileNotFoundException, StorageProviderException;
 
   /**
    * Returns the metadata of a file by its index.
@@ -52,5 +53,6 @@ public interface StorageProvider {
    * @throws StorageFileNotFoundException    if no file exists at the given index
    * @throws StorageProviderException        on any provider error
    */
-  FileInfo getFileMetadata(String datasetId, int index);
+  FileInfo getFileMetadata(String datasetId, int index)
+      throws DatasetNotFoundException, StorageFileNotFoundException, StorageProviderException;
 }

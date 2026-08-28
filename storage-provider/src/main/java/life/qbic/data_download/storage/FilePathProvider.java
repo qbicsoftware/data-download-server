@@ -25,5 +25,6 @@ public interface FilePathProvider {
    * @throws StorageFileNotFoundException    if no file exists at the given index
    * @throws StorageProviderException        on any provider error
    */
-  Optional<Path> getFilePath(String datasetId, int index);
+  Optional<Path> getFilePath(String datasetId, int index)
+      throws DatasetNotFoundException, StorageFileNotFoundException, StorageProviderException;
 }

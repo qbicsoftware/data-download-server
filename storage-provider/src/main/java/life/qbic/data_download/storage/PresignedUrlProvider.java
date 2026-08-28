@@ -27,5 +27,7 @@ public interface PresignedUrlProvider {
    * @throws UrlGenerationException          if the URL could not be generated
    * @throws StorageProviderException        on any provider error
    */
-  PresignedUrl getPresignedUrl(String datasetId, int index, ByteRange range);
+  PresignedUrl getPresignedUrl(String datasetId, int index, ByteRange range)
+      throws DatasetNotFoundException, StorageFileNotFoundException, InvalidByteRangeException,
+      UrlGenerationException, StorageProviderException;
 }

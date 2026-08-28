@@ -30,5 +30,7 @@ public interface ByteRangeProvider {
    * @throws InvalidByteRangeException       if the range is malformed or out of bounds
    * @throws StorageProviderException        on any provider error
    */
-  DataFile getFile(String datasetId, int index, ByteRange range);
+  DataFile getFile(String datasetId, int index, ByteRange range)
+      throws DatasetNotFoundException, StorageFileNotFoundException, InvalidByteRangeException,
+      StorageProviderException;
 }
