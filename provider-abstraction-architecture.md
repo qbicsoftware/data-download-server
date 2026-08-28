@@ -56,7 +56,6 @@ Implement a provider abstraction layer that:
 │  │  StorageProvider Interface (lean)                    │  │
 │  │  - listFiles(datasetId)                              │  │
 │  │  - getFile(datasetId, index)                         │  │
-│  │  - getFileSize(datasetId, index)                     │  │
 │  │  - getFileMetadata(datasetId, index)                 │  │
 │  └──────────────────────────────────────────────────────┘  │
 │       │           │          │          │                  │
@@ -98,12 +97,8 @@ public interface StorageProvider {
     DataFile getFile(String datasetId, int index);
 
     /**
-     * Get file size without opening the file.
-     */
-    long getFileSize(String datasetId, int index);
-
-    /**
      * Get file metadata (size, CRC32, timestamps, etc.).
+     * The file size is available via FileInfo.size().
      */
     FileInfo getFileMetadata(String datasetId, int index);
 }
