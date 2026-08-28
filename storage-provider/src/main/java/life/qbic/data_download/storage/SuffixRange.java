@@ -18,11 +18,11 @@ public record SuffixRange(long length) implements ByteRange {
   }
 
   @Override
-  public Resolved resolve(long fileSize) {
+  public ResolvedRange resolve(long fileSize) {
     if (fileSize <= 0) {
       throw new InvalidByteRangeException("no satisfiable range for an empty file");
     }
     long start = Math.max(0, fileSize - length);
-    return new Resolved(start, fileSize - 1);
+    return new ResolvedRange(start, fileSize - 1);
   }
 }

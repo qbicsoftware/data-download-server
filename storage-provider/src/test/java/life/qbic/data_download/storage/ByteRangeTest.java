@@ -14,7 +14,7 @@ class ByteRangeTest {
   @Test
   @DisplayName("FromToRange resolves to inclusive start and end")
   void fromToResolves() {
-    ByteRange.Resolved r = new FromToRange(0, 99).resolve(1000);
+    ByteRange.ResolvedRange r = new FromToRange(0, 99).resolve(1000);
     assertEquals(0, r.start());
     assertEquals(99, r.end());
     assertEquals(100, r.length());
@@ -23,7 +23,7 @@ class ByteRangeTest {
   @Test
   @DisplayName("FromToRange clamps an end beyond the file size")
   void fromToClampsEnd() {
-    ByteRange.Resolved r = new FromToRange(950, 2000).resolve(1000);
+    ByteRange.ResolvedRange r = new FromToRange(950, 2000).resolve(1000);
     assertEquals(950, r.start());
     assertEquals(999, r.end());
     assertEquals(50, r.length());
@@ -53,7 +53,7 @@ class ByteRangeTest {
   @Test
   @DisplayName("FromStartRange resolves to the end of the file")
   void fromStartResolves() {
-    ByteRange.Resolved r = new FromStartRange(9500).resolve(10000);
+    ByteRange.ResolvedRange r = new FromStartRange(9500).resolve(10000);
     assertEquals(9500, r.start());
     assertEquals(9999, r.end());
     assertEquals(500, r.length());
@@ -70,7 +70,7 @@ class ByteRangeTest {
   @Test
   @DisplayName("SuffixRange resolves to the last N bytes")
   void suffixResolves() {
-    ByteRange.Resolved r = new SuffixRange(500).resolve(10000);
+    ByteRange.ResolvedRange r = new SuffixRange(500).resolve(10000);
     assertEquals(9500, r.start());
     assertEquals(9999, r.end());
     assertEquals(500, r.length());
@@ -79,7 +79,7 @@ class ByteRangeTest {
   @Test
   @DisplayName("SuffixRange uses the whole file when it is shorter than the suffix length")
   void suffixUsesWholeFileWhenShorter() {
-    ByteRange.Resolved r = new SuffixRange(2000).resolve(1000);
+    ByteRange.ResolvedRange r = new SuffixRange(2000).resolve(1000);
     assertEquals(0, r.start());
     assertEquals(999, r.end());
     assertEquals(1000, r.length());

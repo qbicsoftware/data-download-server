@@ -17,7 +17,7 @@ public record FromStartRange(long start) implements ByteRange {
   }
 
   @Override
-  public Resolved resolve(long fileSize) {
+  public ResolvedRange resolve(long fileSize) {
     if (fileSize <= 0) {
       throw new InvalidByteRangeException("no satisfiable range for an empty file");
     }
@@ -25,6 +25,6 @@ public record FromStartRange(long start) implements ByteRange {
       throw new InvalidByteRangeException(
           "range start " + start + " is out of bounds for a file of " + fileSize + " bytes");
     }
-    return new Resolved(start, fileSize - 1);
+    return new ResolvedRange(start, fileSize - 1);
   }
 }

@@ -25,14 +25,14 @@ public sealed interface ByteRange permits FromToRange, FromStartRange, SuffixRan
 
   /**
    * Resolves this range against a known file size into a concrete, inclusive
-   * {@link Resolved} range. Throws {@link InvalidByteRangeException} when the range is
+   * {@link ResolvedRange}. Throws {@link InvalidByteRangeException} when the range is
    * unsatisfiable for the given size.
    *
    * @param fileSize the total size of the file in bytes
    * @return the resolved inclusive byte range
    * @throws InvalidByteRangeException if the range is unsatisfiable for the given file size
    */
-  Resolved resolve(long fileSize);
+  ResolvedRange resolve(long fileSize);
 
   /**
    * An inclusive byte range resolved against a concrete file size.
@@ -40,9 +40,9 @@ public sealed interface ByteRange permits FromToRange, FromStartRange, SuffixRan
    * @param start the first byte offset, inclusive
    * @param end   the last byte offset, inclusive
    */
-  record Resolved(long start, long end) {
+  record ResolvedRange(long start, long end) {
 
-    public Resolved {
+    public ResolvedRange {
       if (start < 0 || end < start) {
         throw new IllegalArgumentException("invalid resolved range " + start + "-" + end);
       }
