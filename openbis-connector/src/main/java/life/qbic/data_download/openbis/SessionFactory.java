@@ -127,6 +127,7 @@ public class SessionFactory {
     }
 
     public String getToken() {
+      log.info("Session for retrieved token is activ? %s".formatted(apiV3.isSessionActive(token)));
       return token;
     }
 
