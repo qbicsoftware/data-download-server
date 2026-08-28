@@ -89,6 +89,30 @@ class OpenBisStorageProviderTest {
     assertArrayEquals("/a content".getBytes(), content);
   }
 
+  @Test
+  @DisplayName("multiple file and range requests within the TTL share one openBIS listing")
+  void multipleRequestsShareOneListingWithinTtl() throws IOException {
+    life.qbic.data_download.storage.ByteRangeProvider rangeProvider =
+        (life.qbic.data_download.storage.ByteRangeProvider) provider;
+
+    provider.listFiles("M-1");
+    provider.getFileMetadata("M-1", 1);
+    readAll(provider.getFile("M-1", 0).inputStream());
+    readAll(rangeProvider.getFile("M-1", 0, new ByteRange(1, 3)).inputStream());
+    readAll(rangeProvider.getFile("M-1", 1, new ByteRange(0, 2)).inputStream());
+
+    // The listing is cached, so the underlying openBIS provider is queried only once.
+    assertEquals(1, fake.listFilesCalls());
+  }
+
+  @Test
+  @DisplayName("unknown datasets are not cached")
+  void unknownDatasetsAreNotCached() {
+    assertThrows(DatasetNotFoundException.class, () -> provider.listFiles("unknown"));
+    assertThrows(DatasetNotFoundException.class, () -> provider.listFiles("unknown"));
+    assertEquals(2, fake.listFilesCalls());
+  }
+
   private static byte[] readAll(InputStream stream) throws IOException {
     try (stream) {
       return stream.readAllBytes();
@@ -107,6 +131,12 @@ class OpenBisStorageProviderTest {
         fileInfo("/a", 10, 123456789L),
         fileInfo("/b", 7, 7L));
 
+    private int listFilesCalls;
+
+    int listFilesCalls() {
+      return listFilesCalls;
+    }
+
     @Override
     public MeasurementData loadData(MeasurementId measurementId) {
       return () -> new ByteArrayInputStream(new byte[0]);
@@ -114,6 +144,7 @@ class OpenBisStorageProviderTest {
 
     @Override
     public List<FileInfo> listFiles(MeasurementId measurementId) {
+      listFilesCalls++;
       if (!"M-1".equals(measurementId.id())) {
         return List.of();
       }

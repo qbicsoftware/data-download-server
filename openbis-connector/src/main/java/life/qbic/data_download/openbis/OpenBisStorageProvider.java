@@ -4,8 +4,12 @@ import static java.util.Objects.requireNonNull;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import life.qbic.data_download.measurements.api.FileInfo;
 import life.qbic.data_download.measurements.api.MeasurementDataProvider;
 import life.qbic.data_download.measurements.api.MeasurementId;
@@ -27,15 +31,44 @@ import life.qbic.data_download.storage.exception.StorageFileNotFoundException;
  *
  * <p>Implements {@link ByteRangeProvider} to preserve resumable downloads: a byte range is honored
  * by skipping to the requested offset on the underlying DSS stream.
+ *
+ * <p>The file listing of a dataset is cached for a short {@link #cacheTtl} to limit openBIS
+ * traffic. Since datasets change very seldomly, multiple range requests on the same file, or
+ * requests for several files of the same dataset, share one openBIS listing within the TTL. The
+ * cached order is stable within the cache lifetime, so indices resolved once stay valid.
  */
 public class OpenBisStorageProvider implements StorageProvider, ByteRangeProvider {
 
   private static final String CRC32_ALGORITHM = "crc32";
+  private static final Duration DEFAULT_CACHE_TTL = Duration.ofSeconds(30);
 
   private final MeasurementDataProvider delegate;
+  private final Duration cacheTtl;
+  private final Map<String, CachedFiles> cache = new ConcurrentHashMap<>();
 
   public OpenBisStorageProvider(MeasurementDataProvider delegate) {
+    this(delegate, DEFAULT_CACHE_TTL);
+  }
+
+  public OpenBisStorageProvider(MeasurementDataProvider delegate, Duration cacheTtl) {
     this.delegate = requireNonNull(delegate, "delegate must not be null");
+    this.cacheTtl = requireNonNull(cacheTtl, "cacheTtl must not be null");
+    if (cacheTtl.isNegative() || cacheTtl.isZero()) {
+      throw new IllegalArgumentException("cacheTtl must be positive");
+    }
+  }
+
+  /**
+   * The cached file listing of a dataset.
+   *
+   * @param createdAt when the listing was fetched from openBIS
+   * @param files     the files sorted by path
+   */
+  private record CachedFiles(Instant createdAt, List<FileInfo> files) {
+
+    boolean expired(Duration ttl) {
+      return createdAt.plus(ttl).isBefore(Instant.now());
+    }
   }
 
   @Override
@@ -80,13 +113,19 @@ public class OpenBisStorageProvider implements StorageProvider, ByteRangeProvide
 
   private List<FileInfo> sortedFiles(String datasetId) {
     requireNonNull(datasetId, "datasetId must not be null");
+    CachedFiles cached = cache.get(datasetId);
+    if (cached != null && !cached.expired(cacheTtl)) {
+      return cached.files();
+    }
     List<FileInfo> files = delegate.listFiles(new MeasurementId(datasetId));
     if (files == null || files.isEmpty()) {
       throw new DatasetNotFoundException(datasetId);
     }
-    return files.stream()
+    List<FileInfo> sorted = files.stream()
         .sorted(Comparator.comparing(FileInfo::path))
         .toList();
+    cache.put(datasetId, new CachedFiles(Instant.now(), sorted));
+    return sorted;
   }
 
   private FileInfo resolveFileInfo(String datasetId, int index) {
