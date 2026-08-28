@@ -12,10 +12,8 @@ import life.qbic.data_download.measurements.api.FileInfo;
 import life.qbic.data_download.measurements.api.MeasurementData;
 import life.qbic.data_download.measurements.api.MeasurementDataProvider;
 import life.qbic.data_download.measurements.api.MeasurementId;
-import life.qbic.data_download.storage.ByteRange;
 import life.qbic.data_download.storage.StorageProvider;
 import life.qbic.data_download.storage.exception.DatasetNotFoundException;
-import life.qbic.data_download.storage.exception.InvalidByteRangeException;
 import life.qbic.data_download.storage.exception.StorageFileNotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -62,44 +60,12 @@ class OpenBisStorageProviderTest {
   }
 
   @Test
-  @DisplayName("byte-range getFile skips to the requested offset")
-  void getFileWithRangeSkipsToOffset() throws IOException {
-    life.qbic.data_download.storage.ByteRangeProvider rangeProvider =
-        (life.qbic.data_download.storage.ByteRangeProvider) provider;
-    byte[] content = readAll(rangeProvider.getFile("M-1", 0, new ByteRange(3, 5)).inputStream());
-    // "/a content" -> skipping first 3 bytes yields the remaining 7 bytes
-    assertArrayEquals("content".getBytes(), content);
-  }
-
-  @Test
-  @DisplayName("byte-range getFile throws InvalidByteRangeException when start is out of bounds")
-  void getFileWithRangeThrowsForOutOfBounds() {
-    life.qbic.data_download.storage.ByteRangeProvider rangeProvider =
-        (life.qbic.data_download.storage.ByteRangeProvider) provider;
-    assertThrows(InvalidByteRangeException.class,
-        () -> rangeProvider.getFile("M-1", 0, new ByteRange(100, 101)));
-  }
-
-  @Test
-  @DisplayName("null byte range delegates to whole-file getFile")
-  void nullRangeDelegatesToWholeFile() throws IOException {
-    life.qbic.data_download.storage.ByteRangeProvider rangeProvider =
-        (life.qbic.data_download.storage.ByteRangeProvider) provider;
-    byte[] content = readAll(rangeProvider.getFile("M-1", 0, null).inputStream());
-    assertArrayEquals("/a content".getBytes(), content);
-  }
-
-  @Test
-  @DisplayName("multiple file and range requests within the TTL share one openBIS listing")
+  @DisplayName("multiple file and metadata requests within the TTL share one openBIS listing")
   void multipleRequestsShareOneListingWithinTtl() throws IOException {
-    life.qbic.data_download.storage.ByteRangeProvider rangeProvider =
-        (life.qbic.data_download.storage.ByteRangeProvider) provider;
-
     provider.listFiles("M-1");
     provider.getFileMetadata("M-1", 1);
     readAll(provider.getFile("M-1", 0).inputStream());
-    readAll(rangeProvider.getFile("M-1", 0, new ByteRange(1, 3)).inputStream());
-    readAll(rangeProvider.getFile("M-1", 1, new ByteRange(0, 2)).inputStream());
+    readAll(provider.getFile("M-1", 1).inputStream());
 
     // The listing is cached, so the underlying openBIS provider is queried only once.
     assertEquals(1, fake.listFilesCalls());
