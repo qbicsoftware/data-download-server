@@ -13,6 +13,7 @@
   <modules>
     <module>zip</module>
     <module>measurement-provider</module>
+    <module>storage-provider</module>
     <module>openbis-connector</module>
     <module>rest-api</module>
   </modules>
