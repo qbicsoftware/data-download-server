@@ -55,23 +55,25 @@ Implement a provider abstraction layer that:
 │  ┌──────────────────────────────────────────────────────┐  │
 │  │  StorageProvider Interface (lean)                    │  │
 │  │  - listFiles(datasetId)                              │  │
-│  │  - getFile(datasetId, index, range)                  │  │
+│  │  - getFile(datasetId, index)                         │  │
 │  │  - getFileSize(datasetId, index)                     │  │
 │  │  - getFileMetadata(datasetId, index)                 │  │
 │  └──────────────────────────────────────────────────────┘  │
-│       │              │               │                     │
-│       │       ┌──────┴──────┐  ┌─────┴──────┐              │
-│       │       │FilePath     │  │PresignedUrl│              │
-│       │       │Provider (I/F)│  │Provider(I/F)│             │
-│       │       └──────┬──────┘  └─────┬──────┘              │
-│       │              │               │                     │
-│       ▼              ▼               ▼                     │
-│  ┌─────────┐   ┌─────────┐     ┌─────────┐               │
-│  │OpenBIS  │   │   NFS   │     │   S3    │               │
-│  │Provider │   │Provider │     │Provider │               │
-│  │(Adapter)│   │(Direct) │     │(Direct) │               │
-│  │         │   │+Path    │     │+Presigned              │
-│  └─────────┘   └─────────┘     └─────────┘               │
+│       │           │          │          │                  │
+│       │    ┌──────┴──┐  ┌────┴───┐  ┌───┴────┐             │
+│       │    │ByteRange│  │FilePath│  │Presigned            │
+│       │    │Provider │  │Provider│  │Provider             │
+│       │    │  (I/F)  │  │ (I/F)  │  │ (I/F)               │
+│       │    └────┬────┘  └───┬────┘  └───┬────┘             │
+│       │         │           │           │                  │
+│       ▼         ▼           ▼           ▼                  │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐        │
+│  │OpenBIS  │ │   NFS   │ │   S3    │ │ (future)│        │
+│  │Provider │ │Provider │ │Provider │ │Provider │        │
+│  │(Adapter)│ │(Direct) │ │(Direct) │ │         │        │
+│  │+Range   │ │+Range   │ │+Range   │ │         │        │
+│  │         │ │+Path    │ │+Presigned│ │         │        │
+│  └─────────┘ └─────────┘ └─────────┘ └─────────┘        │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -91,9 +93,9 @@ public interface StorageProvider {
 
     /**
      * Get a file by its index (from the ordered list returned by listFiles).
-     * Supports byte-range requests for resumable downloads.
+     * Streams the whole file from the start.
      */
-    DataFile getFile(String datasetId, int index, ByteRange range);
+    DataFile getFile(String datasetId, int index);
 
     /**
      * Get file size without opening the file.
@@ -113,6 +115,18 @@ public interface StorageProvider {
 
 ```java
 /**
+ * Providers that can serve partial content.
+ * Enables resumable downloads via byte-range requests.
+ */
+public interface ByteRangeProvider {
+    /**
+     * Get a file by its index, honoring a byte-range request.
+     * The returned stream starts at the range offset.
+     */
+    DataFile getFile(String datasetId, int index, ByteRange range);
+}
+
+/**
  * Filesystem-backed providers (NFS, local mount).
  * Enables direct NIO operations.
  */
@@ -130,11 +144,13 @@ public interface PresignedUrlProvider {
 }
 ```
 
-The optional capability methods are **removed from the core interface** entirely. Consumers detect capabilities with pattern matching instead of default methods:
+Byte-range support is **removed from the core interface** entirely and moved to the `ByteRangeProvider` capability. A provider that does not implement `ByteRangeProvider` serves whole files only (no `Range`/`Accept-Ranges` handling); a provider that does supports resumable downloads. Consumers detect capabilities with pattern matching instead of default methods:
 
 ```java
-if (provider instanceof FilePathProvider fp) {
-    fp.getFilePath(datasetId, index)   // direct NIO access
+if (provider instanceof ByteRangeProvider brp) {
+    brp.getFile(datasetId, index, range)   // range-aware download
+} else {
+    provider.getFile(datasetId, index)     // whole-file download
 }
 ```
 
@@ -181,10 +197,10 @@ StorageProviderException (checked, base)
 
 #### 4. ByteRange Contract
 
-Byte-range semantics must be explicit to avoid off-by-one corruption:
+These semantics apply to providers that implement `ByteRangeProvider` (whole-file-only providers ignore `Range` and never set `Accept-Ranges`). Byte-range semantics must be explicit to avoid off-by-one corruption:
 
 - Ranges are **inclusive on both ends** (`start` to `end`, matching HTTP `Range`), so `bytes=0-99` returns exactly 100 bytes.
-- **Suffix ranges** (`bytes=-500`, last 500 bytes) are supported by all providers; non-native providers emulate them via NIO.
+- **Suffix ranges** (`bytes=-500`, last 500 bytes) are supported by all range-capable providers; non-native providers emulate them via NIO.
 - **Out-of-bounds / invalid** ranges throw `InvalidByteRangeException` (mapped to HTTP 416).
 - A `null` range means **the whole file**.
 
@@ -194,18 +210,20 @@ Byte-range semantics must be explicit to avoid off-by-one corruption:
 - Wraps existing `MeasurementDataProvider` code
 - Minimal changes to preserve working functionality
 - Returns `InputStream` from DSS HTTP API
-- Does **not** implement any capability interface
+- Implements `StorageProvider` + `ByteRangeProvider` (resumable downloads preserved)
+- Does **not** implement the other capability interfaces
 
 **NFS Provider (Direct)**
 - Direct file I/O using Java NIO
-- Implements `StorageProvider` + `FilePathProvider`
+- Implements `StorageProvider` + `ByteRangeProvider` + `FilePathProvider`
 - Returns both `InputStream` and file `Path`
+- Byte-range via NIO positioning
 - Optimal performance for mounted storage
 - No HTTP overhead
 
 **S3 Provider (Direct)**
 - Uses AWS SDK for S3 operations
-- Implements `StorageProvider` + `PresignedUrlProvider`
+- Implements `StorageProvider` + `ByteRangeProvider` + `PresignedUrlProvider`
 - Returns `InputStream` from S3 GetObject
 - Can return pre-signed URLs for direct client access
 - Native byte-range support via S3 Range header
@@ -255,23 +273,33 @@ public interface ProviderRegistry {
 - Byte-range errors (invalid range)
 - Persistent errors after server retries exhausted
 
-**Implementation** (uses the exception taxonomy from section 3 — only `TransientException` subclasses are retried, and backoff is non-blocking):
+**Implementation** (uses the exception taxonomy from section 3 — only `TransientException` subclasses are retried, and backoff is non-blocking). The decorator implements the same capability interfaces as its delegate, forwarding each capability's methods with retry:
 
 ```java
-public class RetryableStorageProvider implements StorageProvider {
+public class RetryableStorageProvider implements StorageProvider, ByteRangeProvider {
     private final StorageProvider delegate;
     private final int maxRetries = 3;
 
     @Override
+    public DataFile getFile(String datasetId, int index) {
+        return withRetry(() -> delegate.getFile(datasetId, index));
+    }
+
+    @Override
     public DataFile getFile(String datasetId, int index, ByteRange range) {
+        return withRetry(() -> ((ByteRangeProvider) delegate).getFile(datasetId, index, range));
+    }
+
+    private DataFile withRetry(Supplier<DataFile> op) {
         for (int attempt = 0; attempt < maxRetries; attempt++) {
             try {
-                return delegate.getFile(datasetId, index, range);
+                return op.get();
             } catch (TransientException e) {
                 if (attempt == maxRetries - 1) throw e;
                 sleepNonBlocking(backoffDelay(attempt));   // async scheduler, not Thread.sleep
             }
         }
+        throw new IllegalStateException("unreachable");
     }
 }
 ```
@@ -620,7 +648,7 @@ Key benefits:
 - **Dataset**: A container with one or more files (currently called "measurement")
 - **Index**: The zero-based position of a file within the stable, ordered list returned by `listFiles()`
 - **Provider**: A storage backend implementation (openBIS, NFS, S3)
-- **Capability interface**: A role interface (`FilePathProvider`, `PresignedUrlProvider`) implemented only by providers that support the capability
+- **Capability interface**: A role interface (`ByteRangeProvider`, `FilePathProvider`, `PresignedUrlProvider`) implemented only by providers that support the capability
 - **Registry**: Maps dataset IDs to storage providers
 - **Byte Range**: A subset of a file (e.g., bytes 1000-2000, inclusive on both ends; `bytes=-500` denotes the last 500 bytes)
 
@@ -644,4 +672,5 @@ Key benefits:
 | File-based logging first | Simple, easy to implement | Full observability (overkill initially) |
 | Index-based core addressing | Matches existing client contract; stable within cache lifetime | FileId-based addressing (stable across source changes) |
 | Capability interfaces (ISP) | Lean core; providers implement only what they support; open-ended | Fat interface with default methods |
+| Byte-range as capability | Whole-file and resumable providers share a lean core; range is opt-in | Range arg in the core getFile for all providers |
 | Exception taxonomy | Makes retry strategy testable and precise | Catch-all exception handling |
