@@ -97,12 +97,16 @@ public interface StorageProvider {
     DataFile getFile(String datasetId, int index);
 
     /**
-     * Get file metadata (size, CRC32, timestamps, etc.).
+     * Get file metadata (size, timestamps, etc.).
      * The file size is available via FileInfo.size().
+     * The integrity checksum (if any) is exposed as an algorithm + value pair,
+     * so the checksum type is chosen by the provider.
      */
     FileInfo getFileMetadata(String datasetId, int index);
 }
 ```
+
+**Checksum type.** The interface does not prescribe a specific checksum algorithm (CRC32, SHA-256, etc.). Each provider decides what checksum it can cheaply provide (or none), and reports it through `FileInfo.checksum()` as an algorithm + value pair (e.g. `crc32=123456789`, `sha256=...`). Consumers that require a specific algorithm must be prepared for a provider not to offer it.
 
 **File identity.** Files are addressed by their **index** within the stable, deterministic order returned by `listFiles()`. Because that order is guaranteed consistent for a given dataset (and cached via the `MeasurementFileIndex`), index-based addressing is reliable within the cache lifetime and keeps the interface backward-compatible with the existing client contract.
 
