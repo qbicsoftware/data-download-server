@@ -239,15 +239,15 @@ public interface ProviderRegistry {
 ```
 
 **Initial Implementation (Monolith)**
-- Database query to map dataset IDs to provider types
-- Configuration in `application.yml` defines available providers
+- Database query to map dataset IDs to provider ids
+- Configuration in `application.yml` defines available providers, keyed by provider id (see section 10)
 - Example:
   ```yaml
   providers:
-    openbis:
+    openbis-1:
       enabled: true
       type: openbis
-    nfs:
+    nfs-1:
       enabled: true
       type: nfs
       mount-path: /mnt/data
@@ -325,20 +325,25 @@ public class RetryableStorageProvider implements StorageProvider, ByteRangeProvi
 
 #### 10. Configuration
 
-**Application properties** (`application.yml`):
+**Application properties** (`application.yml`). Each key under `providers:` is the **provider id** — the same id the `ProviderRegistry` resolves datasets to. The `type` field selects the provider implementation and, in turn, **which other properties are required** for that provider:
+
 ```yaml
 providers:
-  openbis:
-    enabled: true
+  openbis-1:
     type: openbis
-    session-timeout: 3600
-  nfs:
     enabled: true
+    session-timeout: 3600
+  openbis-2:
+    type: openbis
+    enabled: true
+    session-timeout: 3600
+  nfs-1:
     type: nfs
+    enabled: true
     mount-path: /mnt/data
-  s3:
-    enabled: false
+  s3-1:
     type: s3
+    enabled: false
     bucket: my-bucket
     region: eu-central-1
 
@@ -347,6 +352,14 @@ download:
   max-concurrent-per-user: 5
   max-bandwidth-per-user: 1073741824  # 1Gbps
 ```
+
+Multiple providers of the same type may be defined under distinct ids (e.g. two openBIS instances `openbis-1`, `openbis-2`). The `type` value determines the required property set:
+
+- **`openbis`**: `session-timeout` (session refresh interval for the DSS session)
+- **`nfs`**: `mount-path` (root directory on the mounted filesystem)
+- **`s3`**: `bucket`, `region` (AWS credentials via the default credential chain)
+
+The registry looks up a dataset's provider by this id, then instantiates the matching type with the properties defined under that id.
 
 #### 11. Logging and Monitoring
 
@@ -646,9 +659,11 @@ Key benefits:
 
 - **Dataset**: A container with one or more files (currently called "measurement")
 - **Index**: The zero-based position of a file within the stable, ordered list returned by `listFiles()`
-- **Provider**: A storage backend implementation (openBIS, NFS, S3)
+- **Provider**: A configured storage backend instance, identified by a **provider id** and backed by a **type** implementation (openBIS, NFS, S3)
+- **Provider id**: The unique key under `providers:` in `application.yml`; the id the `ProviderRegistry` maps datasets to (e.g. `openbis-1`)
+- **Provider type**: The implementation class selected by the `type` property, which determines the required configuration
 - **Capability interface**: A role interface (`ByteRangeProvider`, `FilePathProvider`, `PresignedUrlProvider`) implemented only by providers that support the capability
-- **Registry**: Maps dataset IDs to storage providers
+- **Registry**: Maps dataset IDs to provider ids
 - **Byte Range**: A subset of a file (e.g., bytes 1000-2000, inclusive on both ends; `bytes=-500` denotes the last 500 bytes)
 
 ### B. References
