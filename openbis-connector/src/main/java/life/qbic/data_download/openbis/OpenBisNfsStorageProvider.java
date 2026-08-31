@@ -2,12 +2,8 @@ package life.qbic.data_download.openbis;
 
 import static java.util.Objects.requireNonNull;
 
-import ch.ethz.sis.openbis.generic.asapi.v3.dto.dataset.DataSet;
-import ch.ethz.sis.openbis.generic.asapi.v3.dto.dataset.id.DataSetPermId;
-import ch.ethz.sis.openbis.generic.dssapi.v3.dto.datasetfile.DataSetFile;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -38,9 +34,9 @@ import org.slf4j.LoggerFactory;
  * but streams file content directly from the mounted filesystem via NIO.
  *
  * <p>This provider combines the metadata richness of openBIS with the performance of direct NFS
- * access. It resolves each file's physical location by fetching the DataSet from openBIS with
- * physical data information, extracting the storage location, and mapping it to the local NFS
- * mount path.
+ * access. It resolves each file's physical location by fetching the physical storage location from
+ * the {@link MeasurementDataProvider}, extracting the storage location, and mapping it to the local
+ * NFS mount path.
  *
  * <p>Implements {@link StorageProvider}, {@link ByteRangeProvider} (for resumable downloads), and
  * {@link FilePathProvider} (for direct NIO operations when needed).
@@ -53,17 +49,17 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
   private static final String CRC32_ALGORITHM = "crc32";
   private static final Duration DEFAULT_CACHE_TTL = Duration.ofSeconds(30);
 
-  private final OpenBisConnector connector;
+  private final MeasurementDataProvider delegate;
   private final Path mountPath;
   private final Duration cacheTtl;
   private final Map<String, CachedFiles> cache = new ConcurrentHashMap<>();
 
-  public OpenBisNfsStorageProvider(OpenBisConnector connector, Path mountPath) {
-    this(connector, mountPath, DEFAULT_CACHE_TTL);
+  public OpenBisNfsStorageProvider(MeasurementDataProvider delegate, Path mountPath) {
+    this(delegate, mountPath, DEFAULT_CACHE_TTL);
   }
 
-  public OpenBisNfsStorageProvider(OpenBisConnector connector, Path mountPath, Duration cacheTtl) {
-    this.connector = requireNonNull(connector, "connector must not be null");
+  public OpenBisNfsStorageProvider(MeasurementDataProvider delegate, Path mountPath, Duration cacheTtl) {
+    this.delegate = requireNonNull(delegate, "delegate must not be null");
     this.mountPath = requireNonNull(mountPath, "mountPath must not be null");
     this.cacheTtl = requireNonNull(cacheTtl, "cacheTtl must not be null");
     if (cacheTtl.isNegative() || cacheTtl.isZero()) {
@@ -136,7 +132,7 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
     if (cached != null && !cached.expired(cacheTtl)) {
       return cached.files();
     }
-    List<FileInfo> files = connector.listFiles(new MeasurementId(datasetId));
+    List<FileInfo> files = delegate.listFiles(new MeasurementId(datasetId));
     if (files == null || files.isEmpty()) {
       throw new DatasetNotFoundException(datasetId);
     }
@@ -156,25 +152,18 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
   }
 
   /**
-   * Resolves the physical filesystem path for a file by fetching the DataSet from openBIS,
-   * extracting the physical storage location, and mapping it to the local NFS mount path.
+   * Resolves the physical filesystem path for a file by fetching the physical storage location
+   * from the {@link MeasurementDataProvider}, and mapping it to the local NFS mount path.
    */
   private Path resolvePhysicalPath(String datasetId, FileInfo fileInfo) {
-    // Fetch the DataSet with physical data to get the storage location
-    List<DataSet> dataSets = connector.loadDataSetsForMeasurement(new MeasurementId(datasetId));
-    if (dataSets.isEmpty()) {
-      throw new DatasetNotFoundException(datasetId);
-    }
-    
-    // Get the physical data location from the first DataSet
-    // In practice, a measurement might have multiple DataSets, but we use the first one
-    DataSet dataSet = dataSets.get(0);
-    if (dataSet.getPhysicalData() == null || dataSet.getPhysicalData().getLocation() == null) {
+    // Get the physical data location from the delegate
+    Optional<String> physicalLocationOpt = delegate.getPhysicalLocation(new MeasurementId(datasetId));
+    if (physicalLocationOpt.isEmpty()) {
       throw new StorageProviderException(
           "Physical data location not available for dataset: " + datasetId);
     }
     
-    String physicalLocation = dataSet.getPhysicalData().getLocation();
+    String physicalLocation = physicalLocationOpt.get();
     LOG.info("[NFS Provider] Physical location from openBIS for dataset {}: {}", datasetId, physicalLocation);
     LOG.info("[NFS Provider] File path from openBIS: {}", fileInfo.path());
     LOG.info("[NFS Provider] Mount path: {}", mountPath);

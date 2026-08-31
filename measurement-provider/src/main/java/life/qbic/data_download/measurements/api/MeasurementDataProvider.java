@@ -1,6 +1,7 @@
 package life.qbic.data_download.measurements.api;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Provides measurement data given a measurement
@@ -29,5 +30,19 @@ public interface MeasurementDataProvider {
    * @return the file with its content, or {@code null} if the measurement or file does not exist
    */
   DataFile loadFile(MeasurementId measurementId, FileInfo fileInfo);
+
+  /**
+   * Returns the physical storage location of a measurement's data, if available.
+   * <p>
+   * This is used by NFS-based providers to resolve the actual filesystem path where files are
+   * stored. The location is typically a sharded directory structure (e.g.,
+   * {@code UUID/c0/0d/c3/timestamp}).
+   *
+   * @param measurementId the measurement to get the physical location for
+   * @return the physical storage location, or empty if not available
+   */
+  default Optional<String> getPhysicalLocation(MeasurementId measurementId) {
+    return Optional.empty();
+  }
 
 }

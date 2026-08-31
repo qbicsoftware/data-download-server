@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import life.qbic.data_download.measurements.api.DataFile;
 import life.qbic.data_download.measurements.api.FileInfo;
@@ -151,6 +152,19 @@ public class OpenBisConnector implements MeasurementFinder, MeasurementDataProvi
     try (var session = sessionFactory.getSession()) {
       return loadDataSetsForMeasurement(session, measurementId);
     }
+  }
+
+  @Override
+  public Optional<String> getPhysicalLocation(MeasurementId measurementId) {
+    List<DataSet> dataSets = loadDataSetsForMeasurement(measurementId);
+    if (dataSets.isEmpty()) {
+      return Optional.empty();
+    }
+    DataSet dataSet = dataSets.get(0);
+    if (dataSet.getPhysicalData() == null || dataSet.getPhysicalData().getLocation() == null) {
+      return Optional.empty();
+    }
+    return Optional.of(dataSet.getPhysicalData().getLocation());
   }
 
   private List<DataSet> loadDataSetsForMeasurement(OpenBisSession session,
