@@ -23,17 +23,22 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
-import life.qbic.data_download.measurements.api.DataFile;
-import life.qbic.data_download.measurements.api.FileInfo;
-import life.qbic.data_download.measurements.api.MeasurementDataProvider;
-import life.qbic.data_download.measurements.api.MeasurementId;
-import life.qbic.data_download.measurements.api.PathFormatter;
 import life.qbic.data_download.rest.exceptions.GlobalException;
 import life.qbic.data_download.rest.exceptions.GlobalException.ErrorCode;
 import life.qbic.data_download.rest.exceptions.GlobalException.ErrorParameters;
+import life.qbic.data_download.storage.ByteRange;
+import life.qbic.data_download.storage.ByteRangeProvider;
+import life.qbic.data_download.storage.ByteRangeParser;
+import life.qbic.data_download.storage.DataFile;
+import life.qbic.data_download.storage.FileInfo;
+import life.qbic.data_download.storage.ProviderRegistry;
+import life.qbic.data_download.storage.StorageProvider;
+import life.qbic.data_download.storage.exception.DatasetNotFoundException;
+import life.qbic.data_download.storage.exception.InvalidByteRangeException;
+import life.qbic.data_download.storage.exception.StorageFileNotFoundException;
+import life.qbic.data_download.storage.exception.StorageProviderException;
+import life.qbic.data_download.storage.exception.TransientException;
 import org.slf4j.Logger;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -47,25 +52,28 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 /**
- * Endpoints to list and download the files of a measurement without zipping them. Files are
+ * V2 endpoints to list and download the files of a measurement without zipping them. Files are
  * referenced by a stable index derived from their sorted path and support resumable downloads via
  * HTTP range requests.
+ *
+ * <p>This controller uses the {@link ProviderRegistry} and {@link StorageProvider} abstraction
+ * instead of the legacy {@link life.qbic.data_download.measurements.api.MeasurementDataProvider}.
+ * It is activated via the {@code download.controller-version=v2} property.
  */
 @RestController
-@ConditionalOnProperty(name = "download.controller-version", havingValue = "v1", matchIfMissing = true)
+@ConditionalOnProperty(name = "download.controller-version", havingValue = "v2")
 @Tag(name = "Download Endpoints", description = "Rest endpoints related to downloading data")
-public class MeasurementFileController {
+public class MeasurementFileControllerV2 {
 
-  private static final Logger log = getLogger(MeasurementFileController.class);
+  private static final Logger log = getLogger(MeasurementFileControllerV2.class);
 
   private static final Pattern MEASUREMENT_ID_PATTERN = Pattern.compile("[^a-zA-Z0-9-]+");
-  private static final int DEFAULT_BUFFER_SIZE = 1024 * 1024; //1 MB buffer
-  private static final long DEFAULT_PROGRESS_LOG_INTERVAL_MS = 30_000; // Log progress every 30 seconds
-  private static final long POLL_TIMEOUT_MS = 100; // Poll timeout for checking producer status
+  private static final int DEFAULT_BUFFER_SIZE = 1024 * 1024; // 1 MB buffer
+  private static final long DEFAULT_PROGRESS_LOG_INTERVAL_MS = 30_000;
+  private static final long POLL_TIMEOUT_MS = 100;
 
-  private final MeasurementDataProvider measurementDataProvider;
-  private final MeasurementFileIndex measurementFileIndex;
-  private final ByteRange byteRange;
+  private final ProviderRegistry providerRegistry;
+  private final StorageFileIndex storageFileIndex;
   private final int downloadBufferSize;
   private final int downloadQueueCapacity;
   private final long progressLogIntervalMs;
@@ -74,27 +82,21 @@ public class MeasurementFileController {
   private static final int DEFAULT_QUEUE_CAPACITY = 64;
   private static final int DEFAULT_NEAR_FULL_QUEUE_LEFT = 3;
 
-  public MeasurementFileController(
-      @Qualifier("measurementDataProvider") MeasurementDataProvider measurementDataProvider,
-      MeasurementFileIndex measurementFileIndex,
-      ByteRange byteRange,
-      @Value("${server.memory.download.buffer}") Integer downloadBufferSize,
-      @Value("${server.download.queue.capacity}") Integer downloadQueueCapacity,
-      @Value("${server.download.progress-log-interval:30000}") Long progressLogIntervalMs,
-      @Value("${server.download.near-full-queue-left:3}") Integer nearFullQueueLeft) {
-    this.measurementDataProvider = measurementDataProvider;
-    this.measurementFileIndex = measurementFileIndex;
-    this.byteRange = byteRange;
-    this.downloadBufferSize = Optional.ofNullable(downloadBufferSize)
-        .orElse(DEFAULT_BUFFER_SIZE);
-    this.downloadQueueCapacity = Optional.ofNullable(downloadQueueCapacity)
-        .orElse(DEFAULT_QUEUE_CAPACITY);
+  public MeasurementFileControllerV2(
+      ProviderRegistry providerRegistry,
+      StorageFileIndex storageFileIndex,
+      @org.springframework.beans.factory.annotation.Value("${server.memory.download.buffer}") Integer downloadBufferSize,
+      @org.springframework.beans.factory.annotation.Value("${server.download.queue.capacity}") Integer downloadQueueCapacity,
+      @org.springframework.beans.factory.annotation.Value("${server.download.progress-log-interval:30000}") Long progressLogIntervalMs,
+      @org.springframework.beans.factory.annotation.Value("${server.download.near-full-queue-left:3}") Integer nearFullQueueLeft) {
+    this.providerRegistry = providerRegistry;
+    this.storageFileIndex = storageFileIndex;
+    this.downloadBufferSize = Optional.ofNullable(downloadBufferSize).orElse(DEFAULT_BUFFER_SIZE);
+    this.downloadQueueCapacity = Optional.ofNullable(downloadQueueCapacity).orElse(DEFAULT_QUEUE_CAPACITY);
     this.progressLogIntervalMs = Optional.ofNullable(progressLogIntervalMs)
-        .filter(value -> value > 0)
-        .orElse(DEFAULT_PROGRESS_LOG_INTERVAL_MS);
+        .filter(v -> v > 0).orElse(DEFAULT_PROGRESS_LOG_INTERVAL_MS);
     this.nearFullQueueCapacity = Optional.ofNullable(nearFullQueueLeft)
-        .filter(value -> value >= 0)
-        .orElse(DEFAULT_NEAR_FULL_QUEUE_LEFT);
+        .filter(v -> v >= 0).orElse(DEFAULT_NEAR_FULL_QUEUE_LEFT);
   }
 
   @GetMapping(value = {"/measurements/{measurementId}/files/", "/measurements/{measurementId}/files"}, produces = MediaType.APPLICATION_JSON_VALUE)
@@ -107,25 +109,28 @@ public class MeasurementFileController {
   })
   public ResponseEntity<MeasurementManifest> manifest(
       @PathVariable("measurementId") String measurementId) {
-    var sanitizedId = sanitizeMeasurementId(measurementId);
-    var measurementIdentifier = new MeasurementId(sanitizedId);
-    var files = measurementFileIndex.files(measurementIdentifier);
-    // A measurement without any files is indistinguishable from a non-existent one, so an empty
-    // list is reported as "not found" to the client.
+    String sanitizedId = sanitizeMeasurementId(measurementId);
+    java.util.List<FileInfo> files;
+    try {
+      files = storageFileIndex.files(sanitizedId);
+    } catch (DatasetNotFoundException e) {
+      throw new GlobalException("request failed.", ErrorCode.MEASUREMENT_NOT_FOUND,
+          ErrorParameters.of(sanitizedId));
+    } catch (TransientException e) {
+      throw new GlobalException("request failed.", ErrorCode.GENERAL, ErrorParameters.empty());
+    }
     if (files.isEmpty()) {
-      throw new GlobalException("request failed.",
-          ErrorCode.MEASUREMENT_NOT_FOUND, ErrorParameters.of(sanitizedId));
+      throw new GlobalException("request failed.", ErrorCode.MEASUREMENT_NOT_FOUND,
+          ErrorParameters.of(sanitizedId));
     }
     var entries = new java.util.ArrayList<MeasurementManifest.FileEntry>();
     for (int i = 0; i < files.size(); i++) {
       FileInfo fileInfo = files.get(i);
-      String downloadHref =
-          "/measurements/%s/files/%d".formatted(sanitizedId, i);
-      var links = new MeasurementManifest.Links(
-          new MeasurementManifest.Download(downloadHref));
+      String downloadHref = "/measurements/%s/files/%d".formatted(sanitizedId, i);
+      var links = new MeasurementManifest.Links(new MeasurementManifest.Download(downloadHref));
+      long crc32 = parseCrc32(fileInfo);
       entries.add(new MeasurementManifest.FileEntry(i, fileInfo.path(), fileInfo.fileName(),
-          fileInfo.length(),
-          fileInfo.crc32(), formatUtcIso(fileInfo.registrationMillis()), links));
+          fileInfo.size(), crc32, formatUtcIso(fileInfo.registrationMillis()), links));
     }
     return ResponseEntity.ok(new MeasurementManifest(sanitizedId, entries));
   }
@@ -145,45 +150,110 @@ public class MeasurementFileController {
       @PathVariable("measurementId") String measurementId,
       @PathVariable("index") int index,
       @RequestHeader(value = HttpHeaders.RANGE, required = false) String rangeHeader) {
-    var sanitizedId = sanitizeMeasurementId(measurementId);
-    var measurementIdentifier = new MeasurementId(sanitizedId);
-    FileInfo fileInfo = measurementFileIndex.fileByIndex(measurementIdentifier, index)
-        .orElseThrow(() -> new GlobalException("request failed.",
-            ErrorCode.FILE_NOT_FOUND, ErrorParameters.of(sanitizedId)));
+    String sanitizedId = sanitizeMeasurementId(measurementId);
 
-    // The index only carries file metadata; the content stream must be opened separately per
-    // request, otherwise the byte range could not be streamed independently of the manifest.
-    DataFile dataFile = measurementDataProvider.loadFile(measurementIdentifier, fileInfo);
-    if (dataFile == null) {
-      throw new GlobalException("request failed.",
-          ErrorCode.FILE_NOT_FOUND, ErrorParameters.of(sanitizedId));
+    FileInfo fileInfo;
+    try {
+      fileInfo = storageFileIndex.fileByIndex(sanitizedId, index)
+          .orElseThrow(() -> new GlobalException("request failed.", ErrorCode.FILE_NOT_FOUND,
+              ErrorParameters.of(sanitizedId)));
+    } catch (DatasetNotFoundException e) {
+      throw new GlobalException("request failed.", ErrorCode.MEASUREMENT_NOT_FOUND,
+          ErrorParameters.of(sanitizedId));
+    } catch (TransientException e) {
+      throw new GlobalException("request failed.", ErrorCode.GENERAL, ErrorParameters.empty());
     }
+
+    StorageProvider provider;
+    try {
+      provider = providerRegistry.getProvider(sanitizedId);
+    } catch (StorageProviderException e) {
+      throw new GlobalException("request failed.", ErrorCode.GENERAL, ErrorParameters.empty());
+    }
+
+    long fileLength = fileInfo.size();
+    boolean isRangeCapable = provider instanceof ByteRangeProvider;
+
+    // Parse the range header. For range-capable providers, delegate to the provider.
+    // For non-range-capable providers, handle via skip-to-start on the whole-file stream.
+    ByteRange byteRange = null;
+    ByteRange.ResolvedRange resolvedRange = null;
+    boolean isPartial = false;
+    if (rangeHeader != null && !rangeHeader.isBlank()) {
+      try {
+        byteRange = ByteRangeParser.parse(rangeHeader);
+        if (byteRange != null) {
+          resolvedRange = byteRange.resolve(fileLength);
+          isPartial = true;
+        }
+      } catch (InvalidByteRangeException e) {
+        throw new GlobalException("range not satisfiable", ErrorCode.RANGE_NOT_SATISFIABLE,
+            ErrorParameters.of(fileLength));
+      }
+    }
+
+    // Obtain the DataFile, pushing range handling to the provider when supported.
+    DataFile dataFile;
+    try {
+      if (isRangeCapable && byteRange != null) {
+        dataFile = ((ByteRangeProvider) provider).getFile(sanitizedId, index, byteRange);
+      } else {
+        dataFile = provider.getFile(sanitizedId, index);
+      }
+    } catch (DatasetNotFoundException e) {
+      throw new GlobalException("request failed.", ErrorCode.MEASUREMENT_NOT_FOUND,
+          ErrorParameters.of(sanitizedId));
+    } catch (StorageFileNotFoundException e) {
+      throw new GlobalException("request failed.", ErrorCode.FILE_NOT_FOUND,
+          ErrorParameters.of(sanitizedId));
+    } catch (InvalidByteRangeException e) {
+      throw new GlobalException("range not satisfiable", ErrorCode.RANGE_NOT_SATISFIABLE,
+          ErrorParameters.of(fileLength));
+    } catch (TransientException e) {
+      throw new GlobalException("request failed.", ErrorCode.GENERAL, ErrorParameters.empty());
+    }
+
     String requestId = "downloadFile-" + UUID.randomUUID();
     String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
-    log.info("request %s: user %s requests file %s of measurement %s".formatted(requestId,
-        currentUser, fileInfo.path(), sanitizedId));
+    log.info("request {}: user {} requests file {} of measurement {} (v2)", requestId,
+        currentUser, fileInfo.path(), sanitizedId);
 
-    long fileLength = fileInfo.length();
-    ByteRange.Range requestedRange = byteRange.parse(rangeHeader, fileLength);
-    long start = requestedRange.start();
-    long end = requestedRange.end();
-    long contentLength = requestedRange.length();
-    boolean isPartial = requestedRange.isPartial();
+    // Determine the effective start offset and content length.
+    // For range-capable providers, the stream already starts at the range offset.
+    // For non-range-capable providers, we skip to the start manually.
+    long start;
+    long contentLength;
+    long end;
+    if (isRangeCapable && resolvedRange != null) {
+      start = resolvedRange.start();
+      end = resolvedRange.end();
+      contentLength = resolvedRange.length();
+    } else if (resolvedRange != null) {
+      start = resolvedRange.start();
+      end = resolvedRange.end();
+      contentLength = resolvedRange.length();
+    } else {
+      start = 0;
+      end = fileLength - 1;
+      contentLength = fileLength;
+    }
+
+    final long skipTo = isRangeCapable ? 0 : start;
 
     StreamingResponseBody responseBody = outputStream -> {
-      log.info("request %s: user %s started downloading file %s of measurement %s".formatted(
-          requestId, currentUser, fileInfo.path(), sanitizedId));
+      log.info("request {}: user {} started downloading file {} of measurement {} (v2)",
+          requestId, currentUser, fileInfo.path(), sanitizedId);
       try {
-        writeRange(dataFile, start, contentLength, outputStream, fileInfo.path(), sanitizedId);
-        log.info("request %s: user %s finished downloading file %s of measurement %s".formatted(
-            requestId, currentUser, fileInfo.path(), sanitizedId));
+        writeRange(dataFile, skipTo, contentLength, outputStream, fileInfo.path(), sanitizedId);
+        log.info("request {}: user {} finished downloading file {} of measurement {} (v2)",
+            requestId, currentUser, fileInfo.path(), sanitizedId);
       } catch (Exception e) {
         if (isClientAbort(e)) {
-          log.warn("request %s: user %s disconnected while downloading file %s of measurement %s"
-              .formatted(requestId, currentUser, fileInfo.path(), sanitizedId));
+          log.warn("request {}: user {} disconnected while downloading file {} of measurement {} (v2)",
+              requestId, currentUser, fileInfo.path(), sanitizedId);
         } else {
-          log.error("request %s: user %s failed for file %s of measurement %s".formatted(requestId,
-              currentUser, fileInfo.path(), sanitizedId), e);
+          log.error("request {}: user {} failed for file {} of measurement {} (v2)", requestId,
+              currentUser, fileInfo.path(), sanitizedId, e);
         }
         throw e;
       }
@@ -192,9 +262,11 @@ public class MeasurementFileController {
     HttpHeaders headers = new HttpHeaders();
     headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
     headers.setContentLength(contentLength);
-    headers.set(HttpHeaders.ACCEPT_RANGES, "bytes");
+    if (isRangeCapable) {
+      headers.set(HttpHeaders.ACCEPT_RANGES, "bytes");
+    }
     headers.set(HttpHeaders.CONTENT_DISPOSITION,
-        "attachment; filename=\"" + PathFormatter.fileNameOf(fileInfo.path()) + "\"");
+        "attachment; filename=\"" + extractFileName(fileInfo.path()) + "\"");
     if (isPartial) {
       headers.set(HttpHeaders.CONTENT_RANGE,
           "bytes %d-%d/%d".formatted(start, end, fileLength));
@@ -204,46 +276,14 @@ public class MeasurementFileController {
   }
 
   /**
-   * Checks whether the given exception indicates that the client disconnected during streaming
-   * (e.g. CURL killed with Ctrl+C). These are not server errors and should not be logged as such.
-   * The check is container-agnostic and works with both Tomcat and Jetty.
-   */
-  private static boolean isClientAbort(Exception e) {
-    Throwable cause = e;
-    while (cause != null) {
-      // Check for well-known client abort exception types by name to avoid
-      // hard dependencies on a specific servlet container (Tomcat vs Jetty).
-      String className = cause.getClass().getName();
-      if (className.equals("org.apache.catalina.connector.ClientAbortException")
-          || className.equals("org.eclipse.jetty.io.EofException")) {
-        return true;
-      }
-      String message = cause.getMessage();
-      if (message != null && (message.contains("Broken pipe")
-          || message.contains("Connection reset by peer"))) {
-        return true;
-      }
-      cause = cause.getCause();
-    }
-    return false;
-  }
-
-  /**
    * Writes a byte range from the data file to the output stream using an async producer-consumer
-   * pattern. A dedicated producer thread reads from the DSS input stream into a bounded queue,
+   * pattern. A dedicated producer thread reads from the input stream into a bounded queue,
    * while the consumer (calling thread) reads from the queue and writes to the client output stream.
-   *
-   * <p>This decoupling prevents slow clients from blocking DSS reads. Without this, a slow client
-   * would cause outputStream.write() to block, which in turn blocks inputStream.read(), causing
-   * the DSS TCP receive window to close and eventually the connection to be reset.
-   *
-   * <p>The bounded queue provides backpressure: when the queue is full, the producer blocks, which
-   * naturally closes the TCP receive window and signals the DSS to slow down.
    */
-  private void writeRange(DataFile dataFile, long start, long contentLength, OutputStream outputStream,
-      String filePath, String measurementId) throws IOException {
+  private void writeRange(DataFile dataFile, long skipTo, long contentLength,
+      OutputStream outputStream, String filePath, String measurementId) throws IOException {
     try (InputStream inputStream = dataFile.inputStream()) {
-      skipToStart(inputStream, start);
+      skipToStart(inputStream, skipTo);
       Transfer transfer = startProducer(inputStream, contentLength, filePath);
       try {
         consume(transfer, outputStream, contentLength, filePath, measurementId);
@@ -255,9 +295,7 @@ public class MeasurementFileController {
 
   /**
    * Advances the stream to the requested start offset. {@link InputStream#skip} is not guaranteed
-   * to skip the requested number of bytes, so we loop until the offset is reached. When skip makes
-   * no progress (e.g. on some sources), fall back to reading a single byte at a time so we never
-   * loop forever.
+   * to skip the requested number of bytes, so we loop until the offset is reached.
    */
   private static void skipToStart(InputStream inputStream, long start) throws IOException {
     long skipped = 0;
@@ -274,12 +312,6 @@ public class MeasurementFileController {
     }
   }
 
-  /**
-   * Starts a producer thread that reads from the DSS input stream into a bounded queue and returns
-   * the {@link Transfer} used by the consumer to drain it. The bounded queue decouples the DSS read
-   * (producer) from the client write (consumer); when it is full the producer blocks, providing
-   * backpressure to the DSS.
-   */
   private Transfer startProducer(InputStream inputStream, long contentLength, String filePath) {
     BlockingQueue<byte[]> bufferQueue = new ArrayBlockingQueue<>(downloadQueueCapacity);
     AtomicReference<Throwable> producerError = new AtomicReference<>();
@@ -291,26 +323,23 @@ public class MeasurementFileController {
         int read;
         while (remaining > 0 && (read = inputStream.read(buffer, 0,
             (int) Math.min(buffer.length, remaining))) != -1) {
-          // Copy the data since the buffer is reused for the next read
           byte[] data = Arrays.copyOf(buffer, read);
-          // put() blocks if the queue is full, providing backpressure to the DSS
           bufferQueue.put(data);
           remaining -= read;
         }
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         producerError.compareAndSet(null, e);
-      } catch (Exception|Error e) {
+      } catch (Exception | Error e) {
         producerError.compareAndSet(null, e);
       } finally {
         producerDone.set(true);
       }
-    }, "dss-reader-" + filePath);
+    }, "provider-reader-" + filePath);
     producer.start();
     return new Transfer(producer, bufferQueue, producerError, producerDone);
   }
 
-  /** Drains the queue in the consumer (calling) thread, writing each buffer to the client. */
   private void consume(Transfer transfer, OutputStream outputStream, long contentLength,
       String filePath, String measurementId) throws IOException {
     long totalBytesWritten = 0;
@@ -332,7 +361,7 @@ public class MeasurementFileController {
         transfer.throwIfFailed(filePath);
       }
       transfer.throwIfFailed(filePath);
-      log.info("Transfer complete for file {} of measurement {}: {}MB total",
+      log.info("Transfer complete for file {} of measurement {}: {}MB total (v2)",
           filePath, measurementId, totalBytesWritten / (1024 * 1024));
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
@@ -341,23 +370,14 @@ public class MeasurementFileController {
     }
   }
 
-  /**
-   * Logs a warning whenever the bounded queue has fewer than {@link #nearFullQueueCapacity} free
-   * slots. A repeatedly near-full queue indicates the consumer (client write) cannot keep up with
-   * the producer (DSS read), which is a precursor to backpressure stalling the download.
-   */
   private void logNearFullQueue(Transfer transfer, String filePath, String measurementId) {
     int freeCapacity = downloadQueueCapacity - transfer.queue.size();
     if (freeCapacity < nearFullQueueCapacity) {
-      log.warn("Download queue nearly full for file {} of measurement {}: {} of {} slots free",
+      log.warn("Download queue nearly full for file {} of measurement {}: {} of {} slots free (v2)",
           filePath, measurementId, freeCapacity, downloadQueueCapacity);
     }
   }
 
-  /** Logs download progress at most once per {@link #progressLogIntervalMs}. Throughput is
-   * computed from the bytes written in the current interval only, so it reflects the actual recent
-   * transfer rate rather than the cumulative average. Returns the updated {@code {lastProgressLogTime,
-   * bytesSinceLastLog}} so the caller can reset its interval counters when a log was emitted. */
   private long[] logProgress(long totalBytesWritten, long bytesSinceLastLog, long contentLength,
       long lastProgressLogTime, String filePath, String measurementId, int queueSize) {
     long currentTime = System.currentTimeMillis();
@@ -367,7 +387,7 @@ public class MeasurementFileController {
     double progressPercent = (totalBytesWritten * 100.0) / contentLength;
     double elapsedSeconds = (currentTime - lastProgressLogTime) / 1000.0;
     double throughputMBps = (bytesSinceLastLog / (1024.0 * 1024.0)) / elapsedSeconds;
-    log.info("Download progress for file {} of measurement {}: {}MB / {}MB ({}%), throughput: {} MB/s, queue size: {}",
+    log.info("Download progress for file {} of measurement {}: {}MB / {}MB ({}%), throughput: {} MB/s, queue size: {} (v2)",
         filePath, measurementId,
         totalBytesWritten / (1024 * 1024), contentLength / (1024 * 1024),
         String.format("%.1f", progressPercent),
@@ -376,7 +396,63 @@ public class MeasurementFileController {
     return new long[]{currentTime, 0};
   }
 
-  /** Shared state handed to the consumer so it can coordinate with and drain the producer. */
+  private static boolean isClientAbort(Exception e) {
+    Throwable cause = e;
+    while (cause != null) {
+      String className = cause.getClass().getName();
+      if (className.equals("org.apache.catalina.connector.ClientAbortException")
+          || className.equals("org.eclipse.jetty.io.EofException")) {
+        return true;
+      }
+      String message = cause.getMessage();
+      if (message != null && (message.contains("Broken pipe")
+          || message.contains("Connection reset by peer"))) {
+        return true;
+      }
+      cause = cause.getCause();
+    }
+    return false;
+  }
+
+  private String formatUtcIso(long epochMillis) {
+    if (epochMillis < 0) {
+      return null;
+    }
+    return DateTimeFormatter.ISO_INSTANT.format(Instant.ofEpochMilli(epochMillis));
+  }
+
+  private String sanitizeMeasurementId(String measurementId) {
+    if (MEASUREMENT_ID_PATTERN.matcher(measurementId).find()) {
+      throw new GlobalException("unexpected measurement identifier containing unallowed characters",
+          ErrorCode.ILLEGAL_MEASUREMENT_ID,
+          ErrorParameters.of("The provided measurement identifier contained unexpected characters."));
+    }
+    return measurementId;
+  }
+
+  /**
+   * Extracts the CRC-32 checksum from the file info, or 0 if none is available or the algorithm
+   * is not CRC-32.
+   */
+  private static long parseCrc32(FileInfo fileInfo) {
+    if (fileInfo.checksum() == null) {
+      return 0;
+    }
+    if (!"crc32".equalsIgnoreCase(fileInfo.checksum().algorithm())) {
+      return 0;
+    }
+    try {
+      return Long.parseUnsignedLong(fileInfo.checksum().value());
+    } catch (NumberFormatException e) {
+      return 0;
+    }
+  }
+
+  private static String extractFileName(String path) {
+    int lastSeparator = path.lastIndexOf('/');
+    return lastSeparator < 0 ? path : path.substring(lastSeparator + 1);
+  }
+
   private static final class Transfer {
     final Thread producer;
     final BlockingQueue<byte[]> queue;
@@ -394,23 +470,8 @@ public class MeasurementFileController {
     void throwIfFailed(String filePath) throws IOException {
       Throwable failure = error.get();
       if (failure != null) {
-        throw new IOException("DSS read failed for file " + filePath, failure);
+        throw new IOException("Provider read failed for file " + filePath, failure);
       }
     }
-  }
-
-  private String formatUtcIso(long epochMillis) {
-    if (epochMillis < 0) {
-      return null;
-    }
-    return DateTimeFormatter.ISO_INSTANT.format(Instant.ofEpochMilli(epochMillis));
-  }
-
-  private String sanitizeMeasurementId(String measurementId) {
-    if (MEASUREMENT_ID_PATTERN.matcher(measurementId).find()) {
-      throw new GlobalException("unexpected measurement identifier containing unallowed characters",
-          ErrorCode.ILLEGAL_MEASUREMENT_ID, ErrorParameters.of("The provided measurement identifier contained unexpected characters."));
-    }
-    return measurementId;
   }
 }

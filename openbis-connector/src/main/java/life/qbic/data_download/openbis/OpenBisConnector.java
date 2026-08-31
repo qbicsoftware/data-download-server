@@ -154,6 +154,7 @@ public class OpenBisConnector implements MeasurementFinder, MeasurementDataProvi
 
     DataSetFetchOptions dataSetFetchOptions = new DataSetFetchOptions();
     dataSetFetchOptions.withChildrenUsing(dataSetFetchOptions);
+    dataSetFetchOptions.withPhysicalData();
 
     return applicationServer.searchDataSets(session.getToken(),
         dataSetSearchCriteria,
