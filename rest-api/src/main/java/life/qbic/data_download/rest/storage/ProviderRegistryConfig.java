@@ -1,8 +1,10 @@
 package life.qbic.data_download.rest.storage;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import life.qbic.data_download.measurements.api.MeasurementDataProvider;
+import life.qbic.data_download.openbis.OpenBisNfsStorageProvider;
 import life.qbic.data_download.openbis.OpenBisStorageProvider;
 import life.qbic.data_download.storage.ConfigurableProviderRegistry;
 import life.qbic.data_download.storage.DatasetProviderResolver;
@@ -18,8 +20,11 @@ import org.springframework.context.annotation.Configuration;
 /**
  * Wires the configured storage providers into a {@link ProviderRegistry}.
  *
- * <p>Currently only the {@code openbis} type is supported; it adapts the legacy
- * {@link MeasurementDataProvider}. The registry is consumed by the download endpoints.
+ * <p>Supported provider types:
+ * <ul>
+ *   <li>{@code openbis} - uses openBIS DSS HTTP API for metadata and file streaming</li>
+ *   <li>{@code openbis-nfs} - uses openBIS for metadata, streams files from mounted NFS via NIO</li>
+ * </ul>
  */
 @Configuration
 @EnableConfigurationProperties(ProviderProperties.class)
@@ -30,6 +35,7 @@ public class ProviderRegistryConfig {
       @Qualifier("measurementDataProvider") MeasurementDataProvider measurementDataProvider) {
     return definition -> switch (definition.type()) {
       case "openbis" -> new OpenBisStorageProvider(measurementDataProvider);
+      case "openbis-nfs" -> createOpenBisNfsProvider(definition, measurementDataProvider);
       default -> throw new IllegalArgumentException(
           "unknown storage provider type: " + definition.type());
     };
@@ -55,6 +61,21 @@ public class ProviderRegistryConfig {
       ProviderProperties.Provider provider) {
     return new ProviderDefinition(id, provider.getType(), provider.isEnabled(),
         provider.getProperties());
+  }
+
+  /**
+   * Creates an OpenBisNfsStorageProvider from the given definition. Requires a {@code mount-path}
+   * property specifying the root directory where openBIS data is mounted.
+   */
+  private static OpenBisNfsStorageProvider createOpenBisNfsProvider(
+      ProviderDefinition definition, MeasurementDataProvider measurementDataProvider) {
+    Object mountPathObj = definition.properties().get("mount-path");
+    if (mountPathObj == null) {
+      throw new IllegalArgumentException(
+          "openbis-nfs provider requires 'mount-path' property: " + definition.id());
+    }
+    Path mountPath = Path.of(mountPathObj.toString());
+    return new OpenBisNfsStorageProvider(measurementDataProvider, mountPath);
   }
 
   /**
