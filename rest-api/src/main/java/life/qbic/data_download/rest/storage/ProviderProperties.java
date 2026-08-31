@@ -156,14 +156,14 @@ public class ProviderProperties {
    * Filename configuration.
    */
   public static class FilenameConfig {
-    private String ignoredPrefix;
+    private String wrapperDirectory;
 
-    public String getIgnoredPrefix() {
-      return ignoredPrefix;
+    public String getWrapperDirectory() {
+      return wrapperDirectory;
     }
 
-    public void setIgnoredPrefix(String ignoredPrefix) {
-      this.ignoredPrefix = ignoredPrefix;
+    public void setWrapperDirectory(String wrapperDirectory) {
+      this.wrapperDirectory = wrapperDirectory;
     }
   }
 }

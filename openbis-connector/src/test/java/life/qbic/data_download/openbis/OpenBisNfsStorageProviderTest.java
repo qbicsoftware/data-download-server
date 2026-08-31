@@ -28,7 +28,7 @@ class OpenBisNfsStorageProviderTest {
     // Constructor validates connector first, then mount path
     // With null connector, it throws NullPointerException before checking mount path
     assertThrows(NullPointerException.class, 
-        () -> new OpenBisNfsStorageProvider(null, notADir));
+        () -> new OpenBisNfsStorageProvider(null, notADir, "original"));
   }
 
   @Test
@@ -44,9 +44,9 @@ class OpenBisNfsStorageProviderTest {
     // Constructor validates connector first, then mount path, then cache TTL
     // With null connector, it throws NullPointerException before checking cache TTL
     assertThrows(NullPointerException.class,
-        () -> new OpenBisNfsStorageProvider(null, mountPath, Duration.ZERO));
+        () -> new OpenBisNfsStorageProvider(null, mountPath, "original", Duration.ZERO));
     assertThrows(NullPointerException.class,
-        () -> new OpenBisNfsStorageProvider(null, mountPath, Duration.ofSeconds(-1)));
+        () -> new OpenBisNfsStorageProvider(null, mountPath, "original", Duration.ofSeconds(-1)));
   }
 
   @Test
@@ -57,7 +57,7 @@ class OpenBisNfsStorageProviderTest {
       Files.createDirectories(mountPath);
       // Should throw NullPointerException for null connector
       assertThrows(NullPointerException.class, 
-          () -> new OpenBisNfsStorageProvider(null, mountPath));
+          () -> new OpenBisNfsStorageProvider(null, mountPath, "original"));
     } catch (IOException e) {
       fail("Failed to create test directory", e);
     }

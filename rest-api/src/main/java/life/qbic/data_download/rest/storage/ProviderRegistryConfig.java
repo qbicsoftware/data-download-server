@@ -102,9 +102,9 @@ public class ProviderRegistryConfig {
     }
     
     // Extract filename configuration (optional)
-    String ignoredPrefix = "original";
-    if (provider.getFilename() != null && provider.getFilename().getIgnoredPrefix() != null) {
-      ignoredPrefix = provider.getFilename().getIgnoredPrefix();
+    String wrapperDirectory = "original";
+    if (provider.getFilename() != null && provider.getFilename().getWrapperDirectory() != null) {
+      wrapperDirectory = provider.getFilename().getWrapperDirectory();
     }
     
     // Validate and extract mount-path
@@ -120,10 +120,10 @@ public class ProviderRegistryConfig {
         sessionFactory,
         applicationUrl,
         dataStoreUrlList,
-        ignoredPrefix
+        wrapperDirectory
     );
     
-    return new OpenBisNfsStorageProvider(connector, mountPath);
+    return new OpenBisNfsStorageProvider(connector, mountPath, wrapperDirectory);
   }
 
   /**

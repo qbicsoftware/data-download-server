@@ -49,16 +49,18 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
 
   private final OpenBisConnector connector;
   private final Path mountPath;
+  private final String wrapperDirectory;
   private final Duration cacheTtl;
   private final Map<String, CachedFiles> cache = new ConcurrentHashMap<>();
 
-  public OpenBisNfsStorageProvider(OpenBisConnector connector, Path mountPath) {
-    this(connector, mountPath, DEFAULT_CACHE_TTL);
+  public OpenBisNfsStorageProvider(OpenBisConnector connector, Path mountPath, String wrapperDirectory) {
+    this(connector, mountPath, wrapperDirectory, DEFAULT_CACHE_TTL);
   }
 
-  public OpenBisNfsStorageProvider(OpenBisConnector connector, Path mountPath, Duration cacheTtl) {
+  public OpenBisNfsStorageProvider(OpenBisConnector connector, Path mountPath, String wrapperDirectory, Duration cacheTtl) {
     this.connector = requireNonNull(connector, "connector must not be null");
     this.mountPath = requireNonNull(mountPath, "mountPath must not be null");
+    this.wrapperDirectory = requireNonNull(wrapperDirectory, "wrapperDirectory must not be null");
     this.cacheTtl = requireNonNull(cacheTtl, "cacheTtl must not be null");
     if (cacheTtl.isNegative() || cacheTtl.isZero()) {
       throw new IllegalArgumentException("cacheTtl must be positive");
@@ -104,8 +106,16 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
     
     return legacyFiles.stream()
         .map(legacyFileInfo -> {
+          // Strip the wrapper directory from the path for user-facing paths
+          // openBIS returns: original/Fastq1/file.gz
+          // Users should see: Fastq1/file.gz
+          String userPath = legacyFileInfo.path();
+          if (userPath.startsWith(wrapperDirectory + "/")) {
+            userPath = userPath.substring(wrapperDirectory.length() + 1);
+          }
+          
           Path relativePath = Path.of(legacyFileInfo.path());
-          Path absolutePath = physicalBasePath.resolve(relativePath);
+          Path absolutePath = physicalBasePath.resolve(wrapperDirectory).resolve(relativePath);
           
           // Get the actual file size from the filesystem
           long actualSize;
@@ -120,7 +130,7 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
               new life.qbic.data_download.storage.FileInfo.Checksum(CRC32_ALGORITHM,
                   Long.toUnsignedString(legacyFileInfo.crc32()));
           return new life.qbic.data_download.storage.FileInfo(
-              legacyFileInfo.path(),
+              userPath,
               legacyFileInfo.fileName(),
               actualSize,
               checksum,
@@ -138,12 +148,18 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
     LOG.info("[NFS Provider] Resolved file info: {}", legacyFileInfo.path());
     Path filePath = resolvePhysicalPath(datasetId, legacyFileInfo);
     
+    // Strip the wrapper directory from the path for user-facing paths
+    String userPath = legacyFileInfo.path();
+    if (userPath.startsWith(wrapperDirectory + "/")) {
+      userPath = userPath.substring(wrapperDirectory.length() + 1);
+    }
+    
     // Create a temporary FileInfo - the actual size will be determined from the filesystem in createDataFile
     life.qbic.data_download.storage.FileInfo.Checksum checksum =
         new life.qbic.data_download.storage.FileInfo.Checksum(CRC32_ALGORITHM,
             Long.toUnsignedString(legacyFileInfo.crc32()));
     life.qbic.data_download.storage.FileInfo storageFileInfo = new life.qbic.data_download.storage.FileInfo(
-        legacyFileInfo.path(),
+        userPath,
         legacyFileInfo.fileName(),
         legacyFileInfo.length(), // This will be overridden in createDataFile
         checksum,
@@ -159,6 +175,12 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
     FileInfo legacyFileInfo = resolveFileInfo(datasetId, index);
     Path filePath = resolvePhysicalPath(datasetId, legacyFileInfo);
     
+    // Strip the wrapper directory from the path for user-facing paths
+    String userPath = legacyFileInfo.path();
+    if (userPath.startsWith(wrapperDirectory + "/")) {
+      userPath = userPath.substring(wrapperDirectory.length() + 1);
+    }
+    
     // Get the actual file size from the filesystem for range resolution
     long actualSize;
     try {
@@ -172,7 +194,7 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
         new life.qbic.data_download.storage.FileInfo.Checksum(CRC32_ALGORITHM,
             Long.toUnsignedString(legacyFileInfo.crc32()));
     life.qbic.data_download.storage.FileInfo storageFileInfo = new life.qbic.data_download.storage.FileInfo(
-        legacyFileInfo.path(),
+        userPath,
         legacyFileInfo.fileName(),
         actualSize,
         checksum,
@@ -199,6 +221,12 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
     FileInfo legacyFileInfo = resolveFileInfo(datasetId, index);
     Path filePath = resolvePhysicalPath(datasetId, legacyFileInfo);
     
+    // Strip the wrapper directory from the path for user-facing paths
+    String userPath = legacyFileInfo.path();
+    if (userPath.startsWith(wrapperDirectory + "/")) {
+      userPath = userPath.substring(wrapperDirectory.length() + 1);
+    }
+    
     // Get the actual file size from the filesystem
     long actualSize;
     try {
@@ -212,7 +240,7 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
         new life.qbic.data_download.storage.FileInfo.Checksum(CRC32_ALGORITHM,
             Long.toUnsignedString(legacyFileInfo.crc32()));
     return new life.qbic.data_download.storage.FileInfo(
-        legacyFileInfo.path(),
+        userPath,
         legacyFileInfo.fileName(),
         actualSize,
         checksum,
@@ -269,11 +297,12 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
     LOG.info("[NFS Provider] Physical location from openBIS for dataset {}: {}", datasetId, physicalLocation);
     LOG.info("[NFS Provider] File path from openBIS: {}", fileInfo.path());
     LOG.info("[NFS Provider] Mount path: {}", mountPath);
+    LOG.info("[NFS Provider] Wrapper directory: {}", wrapperDirectory);
     
     // The physical location is the sharded directory structure on the DSS
-    // We need to combine: mountPath + physicalLocation + file.path()
-    // Example: /tmp/openbis-nfs-test/D1B57258-.../c0/0d/c3/.../Fastq1/Fastq1_R1_fastq.gz
-    Path physicalBasePath = mountPath.resolve(physicalLocation);
+    // The actual files are under: mountPath + physicalLocation + wrapperDirectory + relativePath
+    // Example: /tmp/openbis-nfs-test/D1B57258-.../c0/0d/c3/.../original/Fastq1/Fastq1_R1_fastq.gz
+    Path physicalBasePath = mountPath.resolve(physicalLocation).resolve(wrapperDirectory);
     Path relativePath = Path.of(fileInfo.path());
     Path absolutePath = physicalBasePath.resolve(relativePath);
     

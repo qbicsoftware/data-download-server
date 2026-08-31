@@ -13,8 +13,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
@@ -76,7 +74,6 @@ public class MeasurementFileControllerV2 {
   private static final int DEFAULT_BUFFER_SIZE = 1024 * 1024; // 1 MB buffer
   private static final long DEFAULT_PROGRESS_LOG_INTERVAL_MS = 30_000;
   private static final long POLL_TIMEOUT_MS = 100;
-  private static final DateTimeFormatter ZIP_FILENAME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd.HHmmss");
 
   private final ProviderRegistry providerRegistry;
   private final StorageFileIndex storageFileIndex;
@@ -182,8 +179,8 @@ public class MeasurementFileControllerV2 {
       throw new GlobalException("request failed.", ErrorCode.GENERAL, ErrorParameters.empty());
     }
     
-    // Generate ZIP filename
-    String zipFilename = sanitizedId + "-" + LocalDateTime.now(ZoneOffset.UTC).format(ZIP_FILENAME_FORMATTER) + ".zip";
+    // Generate ZIP filename using measurement ID
+    String zipFilename = sanitizedId + ".zip";
     
     StreamingResponseBody responseBody = outputStream -> {
       log.info("request {}: user {} started downloading ZIP of measurement {} (v2)", requestId,
