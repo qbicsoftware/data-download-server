@@ -97,7 +97,11 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
 
   @Override
   public DataFile getFile(String datasetId, int index) {
+    System.out.println("[NFS Provider] getFile called for dataset: " + datasetId + ", index: " + index);
+    LOG.info("[NFS Provider] getFile called for dataset: {}, index: {}", datasetId, index);
     FileInfo legacyFileInfo = resolveFileInfo(datasetId, index);
+    System.out.println("[NFS Provider] Resolved file info: " + legacyFileInfo.path());
+    LOG.info("[NFS Provider] Resolved file info: {}", legacyFileInfo.path());
     Path filePath = resolvePhysicalPath(datasetId, legacyFileInfo);
     life.qbic.data_download.storage.FileInfo storageFileInfo = toStorageFileInfo(legacyFileInfo);
     return createDataFile(storageFileInfo, filePath, null);
