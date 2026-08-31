@@ -7,6 +7,7 @@ import life.qbic.data_download.measurements.api.MeasurementDataProvider;
 import life.qbic.data_download.openbis.OpenBisConnector;
 import life.qbic.data_download.openbis.OpenBisNfsStorageProvider;
 import life.qbic.data_download.openbis.OpenBisStorageProvider;
+import life.qbic.data_download.openbis.SessionFactory;
 import life.qbic.data_download.storage.ConfigurableProviderRegistry;
 import life.qbic.data_download.storage.DatasetProviderResolver;
 import life.qbic.data_download.storage.ProviderDefinition;
@@ -26,6 +27,9 @@ import org.springframework.context.annotation.Configuration;
  *   <li>{@code openbis} - uses openBIS DSS HTTP API for metadata and file streaming</li>
  *   <li>{@code openbis-nfs} - uses openBIS for metadata, streams files from mounted NFS via NIO</li>
  * </ul>
+ *
+ * <p>Each provider can have its own openBIS configuration (credentials, server URLs, etc.) as
+ * specified in the architecture document.
  */
 @Configuration
 @EnableConfigurationProperties(ProviderProperties.class)
@@ -34,16 +38,10 @@ public class ProviderRegistryConfig {
   @Bean
   public ProviderFactory storageProviderFactory(
       @Qualifier("measurementDataProvider") MeasurementDataProvider measurementDataProvider,
-      @org.springframework.beans.factory.annotation.Autowired(required = false) OpenBisConnector openBisConnector) {
+      @Qualifier("openbisSessionFactory") SessionFactory sessionFactory) {
     return definition -> switch (definition.type()) {
       case "openbis" -> new OpenBisStorageProvider(measurementDataProvider);
-      case "openbis-nfs" -> {
-        if (openBisConnector == null) {
-          throw new IllegalStateException(
-              "openbis-nfs provider requires OpenBisConnector, but it's not available");
-        }
-        yield createOpenBisNfsProvider(definition, openBisConnector);
-      }
+      case "openbis-nfs" -> createOpenBisNfsProvider(definition, sessionFactory);
       default -> throw new IllegalArgumentException(
           "unknown storage provider type: " + definition.type());
     };
@@ -72,18 +70,51 @@ public class ProviderRegistryConfig {
   }
 
   /**
-   * Creates an OpenBisNfsStorageProvider from the given definition. Requires a {@code mount-path}
+   * Creates an OpenBisNfsStorageProvider from the given definition. Requires provider-specific
+   * openBIS configuration (user, server, filename, session-timeout) and a {@code mount-path}
    * property specifying the root directory where openBIS data is mounted.
    */
   private static OpenBisNfsStorageProvider createOpenBisNfsProvider(
-      ProviderDefinition definition, OpenBisConnector openBisConnector) {
+      ProviderDefinition definition, SessionFactory sessionFactory) {
+    // Extract openBIS configuration from provider properties
+    String userName = getRequiredProperty(definition, "user.name");
+    String password = getRequiredProperty(definition, "user.password");
+    String applicationUrl = getRequiredProperty(definition, "server.application-url");
+    String dataStoreUrls = getRequiredProperty(definition, "server.datastore-urls");
+    String ignoredPrefix = getProperty(definition, "filename.ignored-prefix", "original");
+    
+    // Extract mount-path
     Object mountPathObj = definition.properties().get("mount-path");
     if (mountPathObj == null) {
       throw new IllegalArgumentException(
           "openbis-nfs provider requires 'mount-path' property: " + definition.id());
     }
     Path mountPath = Path.of(mountPathObj.toString());
-    return new OpenBisNfsStorageProvider(openBisConnector, mountPath);
+    
+    // Create provider-specific OpenBisConnector
+    List<String> dataStoreUrlList = List.of(dataStoreUrls.split(","));
+    OpenBisConnector connector = new OpenBisConnector(
+        sessionFactory,
+        applicationUrl,
+        dataStoreUrlList,
+        ignoredPrefix
+    );
+    
+    return new OpenBisNfsStorageProvider(connector, mountPath);
+  }
+
+  private static String getRequiredProperty(ProviderDefinition definition, String key) {
+    Object value = definition.properties().get(key);
+    if (value == null) {
+      throw new IllegalArgumentException(
+          "Provider '" + definition.id() + "' requires property '" + key + "'");
+    }
+    return value.toString();
+  }
+
+  private static String getProperty(ProviderDefinition definition, String key, String defaultValue) {
+    Object value = definition.properties().get(key);
+    return value != null ? value.toString() : defaultValue;
   }
 
   /**

@@ -9,8 +9,8 @@ import life.qbic.data_download.measurements.api.FileInfo;
 import life.qbic.data_download.measurements.api.MeasurementData;
 import life.qbic.data_download.measurements.api.MeasurementDataProvider;
 import life.qbic.data_download.measurements.api.MeasurementId;
-import life.qbic.data_download.openbis.OpenBisConnector;
 import life.qbic.data_download.openbis.OpenBisStorageProvider;
+import life.qbic.data_download.openbis.SessionFactory;
 import life.qbic.data_download.storage.ProviderRegistry;
 import life.qbic.data_download.storage.StorageProvider;
 import life.qbic.data_download.storage.exception.ProviderException;
@@ -77,11 +77,10 @@ class ProviderRegistryConfigTest {
       };
     }
 
-    @Bean
-    OpenBisConnector openBisConnector() {
-      // Return null for tests that don't use openbis-nfs provider
-      // The openbis provider type doesn't use this bean
-      return null;
+    @Bean("openbisSessionFactory")
+    SessionFactory openbisSessionFactory() {
+      // Return a stub SessionFactory for tests that don't actually use it
+      return new SessionFactory("http://localhost", "test", "test");
     }
   }
 }

@@ -48,6 +48,11 @@ public class OpenBisConnector implements MeasurementFinder, MeasurementDataProvi
 
   private static final String UUID_REGEX = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
 
+  /**
+   * Constructor for creating provider-specific instances with custom configuration.
+   * Used by ProviderRegistryConfig to create openBIS connectors with provider-specific settings.
+   * Also used as the Spring-injected constructor for the global openBIS connector bean.
+   */
   public OpenBisConnector(
       @Qualifier("openbisSessionFactory") SessionFactory sessionFactory,
       @Value("${openbis.server.application.url}") String applicationServerUrl,
