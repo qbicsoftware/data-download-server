@@ -13,8 +13,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -23,6 +26,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import life.qbic.data_download.rest.exceptions.GlobalException;
 import life.qbic.data_download.rest.exceptions.GlobalException.ErrorCode;
 import life.qbic.data_download.rest.exceptions.GlobalException.ErrorParameters;
@@ -71,6 +76,7 @@ public class MeasurementFileControllerV2 {
   private static final int DEFAULT_BUFFER_SIZE = 1024 * 1024; // 1 MB buffer
   private static final long DEFAULT_PROGRESS_LOG_INTERVAL_MS = 30_000;
   private static final long POLL_TIMEOUT_MS = 100;
+  private static final DateTimeFormatter ZIP_FILENAME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd.HHmmss");
 
   private final ProviderRegistry providerRegistry;
   private final StorageFileIndex storageFileIndex;
@@ -133,6 +139,104 @@ public class MeasurementFileControllerV2 {
           fileInfo.size(), crc32, formatUtcIso(fileInfo.registrationMillis()), links));
     }
     return ResponseEntity.ok(new MeasurementManifest(sanitizedId, entries));
+  }
+
+  @GetMapping(value = "/measurements/{measurementId}", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+  @Operation(summary = "Download all files of a measurement as a ZIP archive")
+  @Parameter(name = "measurementId", required = true, description = "The identifier of the measurement", example = "NGSQ0001006AO-25948529211108")
+  @ApiResponses(value = {
+      @ApiResponse(responseCode = "200", description = "successful operation, the ZIP archive is downloaded", content = @Content(schema = @Schema(implementation = Void.class))),
+      @ApiResponse(responseCode = "403", description = "forbidden, you do not have access to this resource"),
+      @ApiResponse(responseCode = "404", description = "measurement not found"),
+  })
+  public ResponseEntity<StreamingResponseBody> downloadMeasurementAsZip(
+      @PathVariable("measurementId") String measurementId) {
+    String sanitizedId = sanitizeMeasurementId(measurementId);
+    String requestId = "downloadZip-" + UUID.randomUUID();
+    String currentUser = SecurityContextHolder.getContext().getAuthentication().getName();
+    
+    log.info("request {}: user {} requests ZIP download of measurement {} (v2)", requestId,
+        currentUser, sanitizedId);
+    
+    // Get the list of files
+    List<FileInfo> files;
+    try {
+      files = storageFileIndex.files(sanitizedId);
+    } catch (DatasetNotFoundException e) {
+      throw new GlobalException("request failed.", ErrorCode.MEASUREMENT_NOT_FOUND,
+          ErrorParameters.of(sanitizedId));
+    } catch (TransientException e) {
+      throw new GlobalException("request failed.", ErrorCode.GENERAL, ErrorParameters.empty());
+    }
+    
+    if (files.isEmpty()) {
+      throw new GlobalException("request failed.", ErrorCode.MEASUREMENT_NOT_FOUND,
+          ErrorParameters.of(sanitizedId));
+    }
+    
+    // Get the storage provider
+    StorageProvider provider;
+    try {
+      provider = providerRegistry.getProvider(sanitizedId);
+    } catch (StorageProviderException e) {
+      throw new GlobalException("request failed.", ErrorCode.GENERAL, ErrorParameters.empty());
+    }
+    
+    // Generate ZIP filename
+    String zipFilename = sanitizedId + "-" + LocalDateTime.now(ZoneOffset.UTC).format(ZIP_FILENAME_FORMATTER) + ".zip";
+    
+    StreamingResponseBody responseBody = outputStream -> {
+      log.info("request {}: user {} started downloading ZIP of measurement {} (v2)", requestId,
+          currentUser, sanitizedId);
+      try (ZipOutputStream zipOutputStream = new ZipOutputStream(outputStream)) {
+        int fileIndex = 0;
+        for (FileInfo fileInfo : files) {
+          DataFile dataFile = provider.getFile(sanitizedId, fileIndex);
+          addToZip(zipOutputStream, dataFile, fileInfo, sanitizedId);
+          fileIndex++;
+        }
+        zipOutputStream.finish();
+        log.info("request {}: user {} finished downloading ZIP of measurement {} (v2)", requestId,
+            currentUser, sanitizedId);
+      } catch (Exception e) {
+        if (isClientAbort(e)) {
+          log.warn("request {}: user {} disconnected while downloading ZIP of measurement {} (v2)",
+              requestId, currentUser, sanitizedId);
+        } else {
+          log.error("request {}: user {} failed for ZIP download of measurement {} (v2)", requestId,
+              currentUser, sanitizedId, e);
+        }
+        throw e;
+      }
+    };
+    
+    HttpHeaders headers = new HttpHeaders();
+    headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+    headers.set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + zipFilename + "\"");
+    
+    return ResponseEntity.ok().headers(headers).body(responseBody);
+  }
+
+  /**
+   * Adds a single file to the ZIP output stream.
+   */
+  private void addToZip(ZipOutputStream zipOutputStream, DataFile dataFile, FileInfo fileInfo,
+      String measurementId) throws IOException {
+    ZipEntry zipEntry = new ZipEntry(fileInfo.path());
+    zipEntry.setSize(fileInfo.size());
+    if (fileInfo.lastModifiedMillis() > 0) {
+      zipEntry.setTime(fileInfo.lastModifiedMillis());
+    }
+    
+    zipOutputStream.putNextEntry(zipEntry);
+    try (InputStream inputStream = dataFile.inputStream()) {
+      byte[] buffer = new byte[downloadBufferSize];
+      int bytesRead;
+      while ((bytesRead = inputStream.read(buffer)) != -1) {
+        zipOutputStream.write(buffer, 0, bytesRead);
+      }
+    }
+    zipOutputStream.closeEntry();
   }
 
   @GetMapping(value = "/measurements/{measurementId}/files/{index}", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)

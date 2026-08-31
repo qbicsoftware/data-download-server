@@ -35,11 +35,13 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 @RestController
+@ConditionalOnProperty(name = "download.controller-version", havingValue = "v1", matchIfMissing = true)
 @Tag(name = "Download Endpoints", description = "Rest endpoints related to downloading data")
 public class MeasurementZipDownloadController {
 
