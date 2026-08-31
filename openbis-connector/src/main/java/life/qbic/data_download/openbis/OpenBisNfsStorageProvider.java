@@ -2,6 +2,9 @@ package life.qbic.data_download.openbis;
 
 import static java.util.Objects.requireNonNull;
 
+import ch.ethz.sis.openbis.generic.asapi.v3.dto.dataset.DataSet;
+import ch.ethz.sis.openbis.generic.asapi.v3.dto.dataset.id.DataSetPermId;
+import ch.ethz.sis.openbis.generic.dssapi.v3.dto.datasetfile.DataSetFile;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.channels.Channels;
@@ -27,14 +30,17 @@ import life.qbic.data_download.storage.StorageProvider;
 import life.qbic.data_download.storage.exception.DatasetNotFoundException;
 import life.qbic.data_download.storage.exception.StorageFileNotFoundException;
 import life.qbic.data_download.storage.exception.StorageProviderException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A hybrid storage provider that uses openBIS for metadata (file list, order, checksums, timestamps)
  * but streams file content directly from the mounted filesystem via NIO.
  *
  * <p>This provider combines the metadata richness of openBIS with the performance of direct NFS
- * access. It resolves each file's physical location by combining the configured {@code mount-path}
- * with the relative path reported by openBIS, then streams the file using Java NIO.
+ * access. It resolves each file's physical location by fetching the DataSet from openBIS with
+ * physical data information, extracting the storage location, and mapping it to the local NFS
+ * mount path.
  *
  * <p>Implements {@link StorageProvider}, {@link ByteRangeProvider} (for resumable downloads), and
  * {@link FilePathProvider} (for direct NIO operations when needed).
@@ -43,20 +49,21 @@ import life.qbic.data_download.storage.exception.StorageProviderException;
  */
 public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProvider, FilePathProvider {
 
+  private static final Logger LOG = LoggerFactory.getLogger(OpenBisNfsStorageProvider.class);
   private static final String CRC32_ALGORITHM = "crc32";
   private static final Duration DEFAULT_CACHE_TTL = Duration.ofSeconds(30);
 
-  private final MeasurementDataProvider delegate;
+  private final OpenBisConnector connector;
   private final Path mountPath;
   private final Duration cacheTtl;
   private final Map<String, CachedFiles> cache = new ConcurrentHashMap<>();
 
-  public OpenBisNfsStorageProvider(MeasurementDataProvider delegate, Path mountPath) {
-    this(delegate, mountPath, DEFAULT_CACHE_TTL);
+  public OpenBisNfsStorageProvider(OpenBisConnector connector, Path mountPath) {
+    this(connector, mountPath, DEFAULT_CACHE_TTL);
   }
 
-  public OpenBisNfsStorageProvider(MeasurementDataProvider delegate, Path mountPath, Duration cacheTtl) {
-    this.delegate = requireNonNull(delegate, "delegate must not be null");
+  public OpenBisNfsStorageProvider(OpenBisConnector connector, Path mountPath, Duration cacheTtl) {
+    this.connector = requireNonNull(connector, "connector must not be null");
     this.mountPath = requireNonNull(mountPath, "mountPath must not be null");
     this.cacheTtl = requireNonNull(cacheTtl, "cacheTtl must not be null");
     if (cacheTtl.isNegative() || cacheTtl.isZero()) {
@@ -82,8 +89,7 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
 
   @Override
   public List<life.qbic.data_download.storage.FileInfo> listFiles(String datasetId) {
-    org.slf4j.LoggerFactory.getLogger(OpenBisNfsStorageProvider.class)
-        .info("[NFS Provider] listFiles called for dataset: {}", datasetId);
+    LOG.info("[NFS Provider] listFiles called for dataset: {}", datasetId);
     return sortedFiles(datasetId).stream()
         .map(this::toStorageFileInfo)
         .toList();
@@ -92,7 +98,7 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
   @Override
   public DataFile getFile(String datasetId, int index) {
     FileInfo legacyFileInfo = resolveFileInfo(datasetId, index);
-    Path filePath = resolvePhysicalPath(legacyFileInfo);
+    Path filePath = resolvePhysicalPath(datasetId, legacyFileInfo);
     life.qbic.data_download.storage.FileInfo storageFileInfo = toStorageFileInfo(legacyFileInfo);
     return createDataFile(storageFileInfo, filePath, null);
   }
@@ -100,7 +106,7 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
   @Override
   public DataFile getFile(String datasetId, int index, ByteRange range) {
     FileInfo legacyFileInfo = resolveFileInfo(datasetId, index);
-    Path filePath = resolvePhysicalPath(legacyFileInfo);
+    Path filePath = resolvePhysicalPath(datasetId, legacyFileInfo);
     life.qbic.data_download.storage.FileInfo storageFileInfo = toStorageFileInfo(legacyFileInfo);
     
     if (range == null) {
@@ -114,7 +120,7 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
   @Override
   public Optional<Path> getFilePath(String datasetId, int index) {
     FileInfo legacyFileInfo = resolveFileInfo(datasetId, index);
-    return Optional.of(resolvePhysicalPath(legacyFileInfo));
+    return Optional.of(resolvePhysicalPath(datasetId, legacyFileInfo));
   }
 
   @Override
@@ -128,7 +134,7 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
     if (cached != null && !cached.expired(cacheTtl)) {
       return cached.files();
     }
-    List<FileInfo> files = delegate.listFiles(new MeasurementId(datasetId));
+    List<FileInfo> files = connector.listFiles(new MeasurementId(datasetId));
     if (files == null || files.isEmpty()) {
       throw new DatasetNotFoundException(datasetId);
     }
@@ -148,14 +154,34 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
   }
 
   /**
-   * Resolves the physical filesystem path for a file by combining the mount-path with the file's
-   * relative path from openBIS.
+   * Resolves the physical filesystem path for a file by fetching the DataSet from openBIS,
+   * extracting the physical storage location, and mapping it to the local NFS mount path.
    */
-  private Path resolvePhysicalPath(FileInfo fileInfo) {
-    // The fileInfo.path() is the relative path within the dataset (e.g., "Fastq1/read1.fastq.gz")
-    // We combine it with the mount-path to get the absolute path
+  private Path resolvePhysicalPath(String datasetId, FileInfo fileInfo) {
+    // Fetch the DataSet with physical data to get the storage location
+    List<DataSet> dataSets = connector.loadDataSetsForMeasurement(new MeasurementId(datasetId));
+    if (dataSets.isEmpty()) {
+      throw new DatasetNotFoundException(datasetId);
+    }
+    
+    // Get the physical data location from the first DataSet
+    // In practice, a measurement might have multiple DataSets, but we use the first one
+    DataSet dataSet = dataSets.get(0);
+    if (dataSet.getPhysicalData() == null || dataSet.getPhysicalData().getLocation() == null) {
+      throw new StorageProviderException(
+          "Physical data location not available for dataset: " + datasetId);
+    }
+    
+    String physicalLocation = dataSet.getPhysicalData().getLocation();
+    LOG.debug("Physical location for dataset {}: {}", datasetId, physicalLocation);
+    
+    // The physical location is the root directory on the DSS where files are stored
+    // We need to map this to our local NFS mount path
+    // The file's relative path within the dataset is fileInfo.path()
     Path relativePath = Path.of(fileInfo.path());
     Path absolutePath = mountPath.resolve(relativePath);
+    
+    LOG.debug("Resolved NFS path: {}", absolutePath);
     
     if (!Files.exists(absolutePath)) {
       throw new StorageProviderException(

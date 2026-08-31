@@ -147,6 +147,12 @@ public class OpenBisConnector implements MeasurementFinder, MeasurementDataProvi
         .toList();
   }
 
+  public List<DataSet> loadDataSetsForMeasurement(MeasurementId measurementId) {
+    try (var session = sessionFactory.getSession()) {
+      return loadDataSetsForMeasurement(session, measurementId);
+    }
+  }
+
   private List<DataSet> loadDataSetsForMeasurement(OpenBisSession session,
       MeasurementId measurementId) {
     DataSetSearchCriteria dataSetSearchCriteria = new DataSetSearchCriteria();

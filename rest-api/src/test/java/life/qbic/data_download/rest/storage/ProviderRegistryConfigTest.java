@@ -9,6 +9,7 @@ import life.qbic.data_download.measurements.api.FileInfo;
 import life.qbic.data_download.measurements.api.MeasurementData;
 import life.qbic.data_download.measurements.api.MeasurementDataProvider;
 import life.qbic.data_download.measurements.api.MeasurementId;
+import life.qbic.data_download.openbis.OpenBisConnector;
 import life.qbic.data_download.openbis.OpenBisStorageProvider;
 import life.qbic.data_download.storage.ProviderRegistry;
 import life.qbic.data_download.storage.StorageProvider;
@@ -22,7 +23,7 @@ import org.springframework.context.annotation.Configuration;
 class ProviderRegistryConfigTest {
 
   private final ApplicationContextRunner context = new ApplicationContextRunner()
-      .withUserConfiguration(TestMeasurementProviderConfig.class, ProviderRegistryConfig.class);
+      .withUserConfiguration(TestConfig.class, ProviderRegistryConfig.class);
 
   @Test
   void registryResolvesDatasetToConfiguredOpenbisProvider() {
@@ -50,11 +51,10 @@ class ProviderRegistryConfigTest {
   }
 
   /**
-   * A fake {@link MeasurementDataProvider} so the openbis provider factory can be constructed
-   * without a real openBIS connection.
+   * Test configuration with fake beans for testing.
    */
   @Configuration
-  static class TestMeasurementProviderConfig {
+  static class TestConfig {
 
     @Bean("measurementDataProvider")
     MeasurementDataProvider measurementDataProvider() {
@@ -75,6 +75,13 @@ class ProviderRegistryConfigTest {
           return null;
         }
       };
+    }
+
+    @Bean
+    OpenBisConnector openBisConnector() {
+      // Return null for tests that don't use openbis-nfs provider
+      // The openbis provider type doesn't use this bean
+      return null;
     }
   }
 }

@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import life.qbic.data_download.measurements.api.MeasurementDataProvider;
+import life.qbic.data_download.openbis.OpenBisConnector;
 import life.qbic.data_download.openbis.OpenBisNfsStorageProvider;
 import life.qbic.data_download.openbis.OpenBisStorageProvider;
 import life.qbic.data_download.storage.ConfigurableProviderRegistry;
@@ -32,10 +33,17 @@ public class ProviderRegistryConfig {
 
   @Bean
   public ProviderFactory storageProviderFactory(
-      @Qualifier("measurementDataProvider") MeasurementDataProvider measurementDataProvider) {
+      @Qualifier("measurementDataProvider") MeasurementDataProvider measurementDataProvider,
+      @org.springframework.beans.factory.annotation.Autowired(required = false) OpenBisConnector openBisConnector) {
     return definition -> switch (definition.type()) {
       case "openbis" -> new OpenBisStorageProvider(measurementDataProvider);
-      case "openbis-nfs" -> createOpenBisNfsProvider(definition, measurementDataProvider);
+      case "openbis-nfs" -> {
+        if (openBisConnector == null) {
+          throw new IllegalStateException(
+              "openbis-nfs provider requires OpenBisConnector, but it's not available");
+        }
+        yield createOpenBisNfsProvider(definition, openBisConnector);
+      }
       default -> throw new IllegalArgumentException(
           "unknown storage provider type: " + definition.type());
     };
@@ -68,14 +76,14 @@ public class ProviderRegistryConfig {
    * property specifying the root directory where openBIS data is mounted.
    */
   private static OpenBisNfsStorageProvider createOpenBisNfsProvider(
-      ProviderDefinition definition, MeasurementDataProvider measurementDataProvider) {
+      ProviderDefinition definition, OpenBisConnector openBisConnector) {
     Object mountPathObj = definition.properties().get("mount-path");
     if (mountPathObj == null) {
       throw new IllegalArgumentException(
           "openbis-nfs provider requires 'mount-path' property: " + definition.id());
     }
     Path mountPath = Path.of(mountPathObj.toString());
-    return new OpenBisNfsStorageProvider(measurementDataProvider, mountPath);
+    return new OpenBisNfsStorageProvider(openBisConnector, mountPath);
   }
 
   /**
