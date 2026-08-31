@@ -2,6 +2,7 @@ package life.qbic.data_download.rest.storage;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import life.qbic.data_download.measurements.api.MeasurementDataProvider;
 import life.qbic.data_download.openbis.OpenBisConnector;
@@ -84,7 +85,7 @@ public class ProviderRegistryConfig {
     String ignoredPrefix = getProperty(definition, "filename.ignored-prefix", "original");
     
     // Extract mount-path
-    Object mountPathObj = definition.properties().get("mount-path");
+    Object mountPathObj = getNestedProperty(definition.properties(), "mount-path");
     if (mountPathObj == null) {
       throw new IllegalArgumentException(
           "openbis-nfs provider requires 'mount-path' property: " + definition.id());
@@ -104,7 +105,7 @@ public class ProviderRegistryConfig {
   }
 
   private static String getRequiredProperty(ProviderDefinition definition, String key) {
-    Object value = definition.properties().get(key);
+    Object value = getNestedProperty(definition.properties(), key);
     if (value == null) {
       throw new IllegalArgumentException(
           "Provider '" + definition.id() + "' requires property '" + key + "'");
@@ -113,8 +114,31 @@ public class ProviderRegistryConfig {
   }
 
   private static String getProperty(ProviderDefinition definition, String key, String defaultValue) {
-    Object value = definition.properties().get(key);
+    Object value = getNestedProperty(definition.properties(), key);
     return value != null ? value.toString() : defaultValue;
+  }
+
+  /**
+   * Retrieves a nested property from a map using dot notation.
+   * For example, "user.name" will look for properties.get("user").get("name").
+   */
+  @SuppressWarnings("unchecked")
+  private static Object getNestedProperty(Map<String, Object> properties, String key) {
+    String[] parts = key.split("\\.");
+    Object current = properties;
+    
+    for (String part : parts) {
+      if (current instanceof Map<?, ?> map) {
+        current = map.get(part);
+        if (current == null) {
+          return null;
+        }
+      } else {
+        return null;
+      }
+    }
+    
+    return current;
   }
 
   /**
