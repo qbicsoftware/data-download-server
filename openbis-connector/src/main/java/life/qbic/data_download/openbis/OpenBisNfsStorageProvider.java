@@ -84,8 +84,50 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
   @Override
   public List<life.qbic.data_download.storage.FileInfo> listFiles(String datasetId) {
     LOG.info("[NFS Provider] listFiles called for dataset: {}", datasetId);
-    return sortedFiles(datasetId).stream()
-        .map(this::toStorageFileInfo)
+    List<FileInfo> legacyFiles = sortedFiles(datasetId);
+    
+    // Get the physical location for this dataset
+    List<ch.ethz.sis.openbis.generic.asapi.v3.dto.dataset.DataSet> dataSets = 
+        connector.loadDataSetsForMeasurement(new MeasurementId(datasetId));
+    if (dataSets.isEmpty()) {
+      throw new DatasetNotFoundException(datasetId);
+    }
+    
+    ch.ethz.sis.openbis.generic.asapi.v3.dto.dataset.DataSet dataSet = dataSets.get(0);
+    if (dataSet.getPhysicalData() == null || dataSet.getPhysicalData().getLocation() == null) {
+      throw new StorageProviderException(
+          "Physical data location not available for dataset: " + datasetId);
+    }
+    
+    String physicalLocation = dataSet.getPhysicalData().getLocation();
+    Path physicalBasePath = mountPath.resolve(physicalLocation);
+    
+    return legacyFiles.stream()
+        .map(legacyFileInfo -> {
+          Path relativePath = Path.of(legacyFileInfo.path());
+          Path absolutePath = physicalBasePath.resolve(relativePath);
+          
+          // Get the actual file size from the filesystem
+          long actualSize;
+          try {
+            actualSize = Files.exists(absolutePath) ? Files.size(absolutePath) : legacyFileInfo.length();
+          } catch (IOException e) {
+            LOG.warn("[NFS Provider] Failed to get file size for {}, using metadata size", absolutePath, e);
+            actualSize = legacyFileInfo.length();
+          }
+          
+          life.qbic.data_download.storage.FileInfo.Checksum checksum =
+              new life.qbic.data_download.storage.FileInfo.Checksum(CRC32_ALGORITHM,
+                  Long.toUnsignedString(legacyFileInfo.crc32()));
+          return new life.qbic.data_download.storage.FileInfo(
+              legacyFileInfo.path(),
+              legacyFileInfo.fileName(),
+              actualSize,
+              checksum,
+              legacyFileInfo.registrationMillis(),
+              legacyFileInfo.lastModifiedMillis()
+          );
+        })
         .toList();
   }
 
@@ -95,7 +137,20 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
     FileInfo legacyFileInfo = resolveFileInfo(datasetId, index);
     LOG.info("[NFS Provider] Resolved file info: {}", legacyFileInfo.path());
     Path filePath = resolvePhysicalPath(datasetId, legacyFileInfo);
-    life.qbic.data_download.storage.FileInfo storageFileInfo = toStorageFileInfo(legacyFileInfo);
+    
+    // Create a temporary FileInfo - the actual size will be determined from the filesystem in createDataFile
+    life.qbic.data_download.storage.FileInfo.Checksum checksum =
+        new life.qbic.data_download.storage.FileInfo.Checksum(CRC32_ALGORITHM,
+            Long.toUnsignedString(legacyFileInfo.crc32()));
+    life.qbic.data_download.storage.FileInfo storageFileInfo = new life.qbic.data_download.storage.FileInfo(
+        legacyFileInfo.path(),
+        legacyFileInfo.fileName(),
+        legacyFileInfo.length(), // This will be overridden in createDataFile
+        checksum,
+        legacyFileInfo.registrationMillis(),
+        legacyFileInfo.lastModifiedMillis()
+    );
+    
     return createDataFile(storageFileInfo, filePath, null);
   }
 
@@ -103,13 +158,33 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
   public DataFile getFile(String datasetId, int index, ByteRange range) {
     FileInfo legacyFileInfo = resolveFileInfo(datasetId, index);
     Path filePath = resolvePhysicalPath(datasetId, legacyFileInfo);
-    life.qbic.data_download.storage.FileInfo storageFileInfo = toStorageFileInfo(legacyFileInfo);
+    
+    // Get the actual file size from the filesystem for range resolution
+    long actualSize;
+    try {
+      actualSize = Files.size(filePath);
+    } catch (IOException e) {
+      LOG.warn("[NFS Provider] Failed to get file size for {}, using metadata size", filePath, e);
+      actualSize = legacyFileInfo.length();
+    }
+    
+    life.qbic.data_download.storage.FileInfo.Checksum checksum =
+        new life.qbic.data_download.storage.FileInfo.Checksum(CRC32_ALGORITHM,
+            Long.toUnsignedString(legacyFileInfo.crc32()));
+    life.qbic.data_download.storage.FileInfo storageFileInfo = new life.qbic.data_download.storage.FileInfo(
+        legacyFileInfo.path(),
+        legacyFileInfo.fileName(),
+        actualSize,
+        checksum,
+        legacyFileInfo.registrationMillis(),
+        legacyFileInfo.lastModifiedMillis()
+    );
     
     if (range == null) {
       return createDataFile(storageFileInfo, filePath, null);
     }
     
-    ByteRange.ResolvedRange resolved = range.resolve(storageFileInfo.size());
+    ByteRange.ResolvedRange resolved = range.resolve(actualSize);
     return createDataFile(storageFileInfo, filePath, resolved);
   }
 
@@ -121,7 +196,29 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
 
   @Override
   public life.qbic.data_download.storage.FileInfo getFileMetadata(String datasetId, int index) {
-    return toStorageFileInfo(resolveFileInfo(datasetId, index));
+    FileInfo legacyFileInfo = resolveFileInfo(datasetId, index);
+    Path filePath = resolvePhysicalPath(datasetId, legacyFileInfo);
+    
+    // Get the actual file size from the filesystem
+    long actualSize;
+    try {
+      actualSize = Files.size(filePath);
+    } catch (IOException e) {
+      LOG.warn("[NFS Provider] Failed to get file size for {}, using metadata size", filePath, e);
+      actualSize = legacyFileInfo.length();
+    }
+    
+    life.qbic.data_download.storage.FileInfo.Checksum checksum =
+        new life.qbic.data_download.storage.FileInfo.Checksum(CRC32_ALGORITHM,
+            Long.toUnsignedString(legacyFileInfo.crc32()));
+    return new life.qbic.data_download.storage.FileInfo(
+        legacyFileInfo.path(),
+        legacyFileInfo.fileName(),
+        actualSize,
+        checksum,
+        legacyFileInfo.registrationMillis(),
+        legacyFileInfo.lastModifiedMillis()
+    );
   }
 
   private List<FileInfo> sortedFiles(String datasetId) {
@@ -198,6 +295,24 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
    */
   private DataFile createDataFile(life.qbic.data_download.storage.FileInfo fileInfo,
       Path filePath, ByteRange.ResolvedRange range) {
+    // Get the actual file size from the filesystem, not from metadata
+    long actualFileSize;
+    try {
+      actualFileSize = Files.size(filePath);
+    } catch (IOException e) {
+      throw new StorageProviderException("Failed to get file size: " + filePath, e);
+    }
+    
+    // Create a new FileInfo with the actual file size
+    life.qbic.data_download.storage.FileInfo actualFileInfo = new life.qbic.data_download.storage.FileInfo(
+        fileInfo.path(),
+        fileInfo.fileName(),
+        actualFileSize,
+        fileInfo.checksum(),
+        fileInfo.registrationMillis(),
+        fileInfo.lastModifiedMillis()
+    );
+    
     return new DataFile() {
       @Override
       public InputStream inputStream() throws IOException {
@@ -206,23 +321,17 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
           channel.position(range.start());
         }
         // Wrap the channel in a stream that closes it when done
-        return new NioFileInputStream(channel, range != null ? range.length() : fileInfo.size());
+        return new NioFileInputStream(channel, range != null ? range.length() : actualFileSize);
       }
 
       @Override
       public life.qbic.data_download.storage.FileInfo fileInfo() {
-        return fileInfo;
+        return actualFileInfo;
       }
     };
   }
 
-  private life.qbic.data_download.storage.FileInfo toStorageFileInfo(FileInfo fileInfo) {
-    life.qbic.data_download.storage.FileInfo.Checksum checksum =
-        new life.qbic.data_download.storage.FileInfo.Checksum(CRC32_ALGORITHM,
-            Long.toUnsignedString(fileInfo.crc32()));
-    return new life.qbic.data_download.storage.FileInfo(fileInfo.path(), fileInfo.fileName(),
-        fileInfo.length(), checksum, fileInfo.registrationMillis(), fileInfo.lastModifiedMillis());
-  }
+
 
   /**
    * An InputStream that reads from a FileChannel and closes it when done. Supports reading a
