@@ -97,10 +97,8 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
 
   @Override
   public DataFile getFile(String datasetId, int index) {
-    System.out.println("[NFS Provider] getFile called for dataset: " + datasetId + ", index: " + index);
     LOG.info("[NFS Provider] getFile called for dataset: {}, index: {}", datasetId, index);
     FileInfo legacyFileInfo = resolveFileInfo(datasetId, index);
-    System.out.println("[NFS Provider] Resolved file info: " + legacyFileInfo.path());
     LOG.info("[NFS Provider] Resolved file info: {}", legacyFileInfo.path());
     Path filePath = resolvePhysicalPath(datasetId, legacyFileInfo);
     life.qbic.data_download.storage.FileInfo storageFileInfo = toStorageFileInfo(legacyFileInfo);
@@ -181,11 +179,12 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
     LOG.info("[NFS Provider] File path from openBIS: {}", fileInfo.path());
     LOG.info("[NFS Provider] Mount path: {}", mountPath);
     
-    // The physical location is the root directory on the DSS where files are stored
-    // We need to map this to our local NFS mount path
-    // The file's relative path within the dataset is fileInfo.path()
+    // The physical location is the sharded directory structure on the DSS
+    // We need to combine: mountPath + physicalLocation + file.path()
+    // Example: /tmp/openbis-nfs-test/D1B57258-.../c0/0d/c3/.../Fastq1/Fastq1_R1_fastq.gz
+    Path physicalBasePath = mountPath.resolve(physicalLocation);
     Path relativePath = Path.of(fileInfo.path());
-    Path absolutePath = mountPath.resolve(relativePath);
+    Path absolutePath = physicalBasePath.resolve(relativePath);
     
     LOG.info("[NFS Provider] Resolved NFS path: {}", absolutePath);
     
