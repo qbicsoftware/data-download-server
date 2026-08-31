@@ -41,7 +41,7 @@ public class ProviderRegistryConfig {
       @Qualifier("openbisSessionFactory") SessionFactory sessionFactory,
       ProviderProperties providerProperties) {
     return definition -> {
-      ProviderProperties.Provider provider = providerProperties.getProviders().get(definition.id());
+      ProviderProperties.Provider provider = providerProperties.getInstances().get(definition.id());
       if (provider == null) {
         throw new IllegalArgumentException("No configuration found for provider: " + definition.id());
       }
@@ -64,7 +64,7 @@ public class ProviderRegistryConfig {
   public ProviderRegistry providerRegistry(ProviderProperties properties,
       ProviderFactory storageProviderFactory,
       DatasetProviderResolver datasetProviderResolver) {
-    List<ProviderDefinition> definitions = properties.getProviders().entrySet().stream()
+    List<ProviderDefinition> definitions = properties.getInstances().entrySet().stream()
         .map(e -> new ProviderDefinition(e.getKey(), e.getValue().getType(), 
             e.getValue().isEnabled(), e.getValue().getAdditionalProperties()))
         .toList();
@@ -143,8 +143,8 @@ public class ProviderRegistryConfig {
       if (properties.getDefaultProvider() != null) {
         return Optional.of(properties.getDefaultProvider());
       }
-      if (properties.getProviders().size() == 1) {
-        return properties.getProviders().keySet().stream().findFirst();
+      if (properties.getInstances().size() == 1) {
+        return properties.getInstances().keySet().stream().findFirst();
       }
       return Optional.empty();
     }

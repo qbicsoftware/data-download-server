@@ -34,8 +34,8 @@ class ProviderRegistryConfigOpenBisNfsTest {
     context
         .withPropertyValues(
             "providers.default-provider=openbis-1",
-            "providers.providers.openbis-1.type=openbis",
-            "providers.providers.openbis-1.enabled=true")
+            "providers.instances.openbis-1.type=openbis",
+            "providers.instances.openbis-1.enabled=true")
         .run(ctx -> {
           assertThat(ctx).hasSingleBean(ProviderRegistry.class);
           ProviderRegistry registry = ctx.getBean(ProviderRegistry.class);

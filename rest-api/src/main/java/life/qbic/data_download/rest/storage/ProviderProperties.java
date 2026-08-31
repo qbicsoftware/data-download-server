@@ -7,18 +7,18 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * Binds the {@code providers.*} application properties.
  *
- * <p>Each key under {@code providers.providers} is a provider id, and its {@code type} selects the
+ * <p>Each key under {@code providers.instances} is a provider id, and its {@code type} selects the
  * provider implementation. {@code providers.default-provider} optionally names the provider id used
  * to serve datasets that are not explicitly mapped.
  */
 @ConfigurationProperties(prefix = "providers")
 public class ProviderProperties {
 
-  private final Map<String, Provider> providers = new LinkedHashMap<>();
+  private final Map<String, Provider> instances = new LinkedHashMap<>();
   private String defaultProvider;
 
-  public Map<String, Provider> getProviders() {
-    return providers;
+  public Map<String, Provider> getInstances() {
+    return instances;
   }
 
   public String getDefaultProvider() {
