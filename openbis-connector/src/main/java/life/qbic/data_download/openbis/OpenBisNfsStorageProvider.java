@@ -173,7 +173,9 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
     }
     
     String physicalLocation = dataSet.getPhysicalData().getLocation();
-    LOG.debug("Physical location for dataset {}: {}", datasetId, physicalLocation);
+    LOG.info("[NFS Provider] Physical location from openBIS for dataset {}: {}", datasetId, physicalLocation);
+    LOG.info("[NFS Provider] File path from openBIS: {}", fileInfo.path());
+    LOG.info("[NFS Provider] Mount path: {}", mountPath);
     
     // The physical location is the root directory on the DSS where files are stored
     // We need to map this to our local NFS mount path
@@ -181,7 +183,7 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
     Path relativePath = Path.of(fileInfo.path());
     Path absolutePath = mountPath.resolve(relativePath);
     
-    LOG.debug("Resolved NFS path: {}", absolutePath);
+    LOG.info("[NFS Provider] Resolved NFS path: {}", absolutePath);
     
     if (!Files.exists(absolutePath)) {
       throw new StorageProviderException(
