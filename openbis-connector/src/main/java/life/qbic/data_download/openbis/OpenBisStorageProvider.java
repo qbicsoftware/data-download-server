@@ -67,6 +67,8 @@ public class OpenBisStorageProvider implements StorageProvider {
 
   @Override
   public List<life.qbic.data_download.storage.FileInfo> listFiles(String datasetId) {
+    org.slf4j.LoggerFactory.getLogger(OpenBisStorageProvider.class)
+        .info("[HTTP Provider] listFiles called for dataset: {}", datasetId);
     return sortedFiles(datasetId).stream()
         .map(this::toStorageFileInfo)
         .toList();

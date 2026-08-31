@@ -82,6 +82,8 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
 
   @Override
   public List<life.qbic.data_download.storage.FileInfo> listFiles(String datasetId) {
+    org.slf4j.LoggerFactory.getLogger(OpenBisNfsStorageProvider.class)
+        .info("[NFS Provider] listFiles called for dataset: {}", datasetId);
     return sortedFiles(datasetId).stream()
         .map(this::toStorageFileInfo)
         .toList();
