@@ -36,7 +36,12 @@ public class ProviderProperties {
 
     private String type;
     private boolean enabled = true;
-    private final Map<String, Object> properties = new LinkedHashMap<>();
+    private UserConfig user;
+    private ServerConfig server;
+    private FilenameConfig filename;
+    private Integer sessionTimeout;
+    private String mountPath;
+    private final Map<String, Object> additionalProperties = new LinkedHashMap<>();
 
     public String getType() {
       return type;
@@ -54,8 +59,111 @@ public class ProviderProperties {
       this.enabled = enabled;
     }
 
-    public Map<String, Object> getProperties() {
-      return properties;
+    public UserConfig getUser() {
+      return user;
+    }
+
+    public void setUser(UserConfig user) {
+      this.user = user;
+    }
+
+    public ServerConfig getServer() {
+      return server;
+    }
+
+    public void setServer(ServerConfig server) {
+      this.server = server;
+    }
+
+    public FilenameConfig getFilename() {
+      return filename;
+    }
+
+    public void setFilename(FilenameConfig filename) {
+      this.filename = filename;
+    }
+
+    public Integer getSessionTimeout() {
+      return sessionTimeout;
+    }
+
+    public void setSessionTimeout(Integer sessionTimeout) {
+      this.sessionTimeout = sessionTimeout;
+    }
+
+    public String getMountPath() {
+      return mountPath;
+    }
+
+    public void setMountPath(String mountPath) {
+      this.mountPath = mountPath;
+    }
+
+    public Map<String, Object> getAdditionalProperties() {
+      return additionalProperties;
+    }
+  }
+
+  /**
+   * User credentials configuration.
+   */
+  public static class UserConfig {
+    private String name;
+    private String password;
+
+    public String getName() {
+      return name;
+    }
+
+    public void setName(String name) {
+      this.name = name;
+    }
+
+    public String getPassword() {
+      return password;
+    }
+
+    public void setPassword(String password) {
+      this.password = password;
+    }
+  }
+
+  /**
+   * Server configuration.
+   */
+  public static class ServerConfig {
+    private String applicationUrl;
+    private String datastoreUrls;
+
+    public String getApplicationUrl() {
+      return applicationUrl;
+    }
+
+    public void setApplicationUrl(String applicationUrl) {
+      this.applicationUrl = applicationUrl;
+    }
+
+    public String getDatastoreUrls() {
+      return datastoreUrls;
+    }
+
+    public void setDatastoreUrls(String datastoreUrls) {
+      this.datastoreUrls = datastoreUrls;
+    }
+  }
+
+  /**
+   * Filename configuration.
+   */
+  public static class FilenameConfig {
+    private String ignoredPrefix;
+
+    public String getIgnoredPrefix() {
+      return ignoredPrefix;
+    }
+
+    public void setIgnoredPrefix(String ignoredPrefix) {
+      this.ignoredPrefix = ignoredPrefix;
     }
   }
 }

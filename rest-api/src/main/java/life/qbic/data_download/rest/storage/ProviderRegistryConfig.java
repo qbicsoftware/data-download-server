@@ -2,7 +2,6 @@ package life.qbic.data_download.rest.storage;
 
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import life.qbic.data_download.measurements.api.MeasurementDataProvider;
 import life.qbic.data_download.openbis.OpenBisConnector;
@@ -39,12 +38,20 @@ public class ProviderRegistryConfig {
   @Bean
   public ProviderFactory storageProviderFactory(
       @Qualifier("measurementDataProvider") MeasurementDataProvider measurementDataProvider,
-      @Qualifier("openbisSessionFactory") SessionFactory sessionFactory) {
-    return definition -> switch (definition.type()) {
-      case "openbis" -> new OpenBisStorageProvider(measurementDataProvider);
-      case "openbis-nfs" -> createOpenBisNfsProvider(definition, sessionFactory);
-      default -> throw new IllegalArgumentException(
-          "unknown storage provider type: " + definition.type());
+      @Qualifier("openbisSessionFactory") SessionFactory sessionFactory,
+      ProviderProperties providerProperties) {
+    return definition -> {
+      ProviderProperties.Provider provider = providerProperties.getProviders().get(definition.id());
+      if (provider == null) {
+        throw new IllegalArgumentException("No configuration found for provider: " + definition.id());
+      }
+      
+      return switch (definition.type()) {
+        case "openbis" -> new OpenBisStorageProvider(measurementDataProvider);
+        case "openbis-nfs" -> createOpenBisNfsProvider(provider, sessionFactory);
+        default -> throw new IllegalArgumentException(
+            "unknown storage provider type: " + definition.type());
+      };
     };
   }
 
@@ -58,39 +65,54 @@ public class ProviderRegistryConfig {
       ProviderFactory storageProviderFactory,
       DatasetProviderResolver datasetProviderResolver) {
     List<ProviderDefinition> definitions = properties.getProviders().entrySet().stream()
-        .map(e -> toDefinition(e.getKey(), e.getValue()))
+        .map(e -> new ProviderDefinition(e.getKey(), e.getValue().getType(), 
+            e.getValue().isEnabled(), e.getValue().getAdditionalProperties()))
         .toList();
     return new ConfigurableProviderRegistry(definitions, storageProviderFactory,
         datasetProviderResolver);
   }
 
-  private static ProviderDefinition toDefinition(String id,
-      ProviderProperties.Provider provider) {
-    return new ProviderDefinition(id, provider.getType(), provider.isEnabled(),
-        provider.getProperties());
-  }
-
   /**
-   * Creates an OpenBisNfsStorageProvider from the given definition. Requires provider-specific
-   * openBIS configuration (user, server, filename, session-timeout) and a {@code mount-path}
-   * property specifying the root directory where openBIS data is mounted.
+   * Creates an OpenBisNfsStorageProvider from the given provider configuration. Requires 
+   * provider-specific openBIS configuration (user, server, filename) and a {@code mount-path}
+   * specifying the root directory where openBIS data is mounted.
    */
   private static OpenBisNfsStorageProvider createOpenBisNfsProvider(
-      ProviderDefinition definition, SessionFactory sessionFactory) {
-    // Extract openBIS configuration from provider properties
-    String userName = getRequiredProperty(definition, "user.name");
-    String password = getRequiredProperty(definition, "user.password");
-    String applicationUrl = getRequiredProperty(definition, "server.application-url");
-    String dataStoreUrls = getRequiredProperty(definition, "server.datastore-urls");
-    String ignoredPrefix = getProperty(definition, "filename.ignored-prefix", "original");
-    
-    // Extract mount-path
-    Object mountPathObj = getNestedProperty(definition.properties(), "mount-path");
-    if (mountPathObj == null) {
-      throw new IllegalArgumentException(
-          "openbis-nfs provider requires 'mount-path' property: " + definition.id());
+      ProviderProperties.Provider provider, SessionFactory sessionFactory) {
+    // Validate and extract user configuration
+    if (provider.getUser() == null) {
+      throw new IllegalArgumentException("openbis-nfs provider requires 'user' configuration");
     }
-    Path mountPath = Path.of(mountPathObj.toString());
+    String userName = provider.getUser().getName();
+    String password = provider.getUser().getPassword();
+    if (userName == null || password == null) {
+      throw new IllegalArgumentException(
+          "openbis-nfs provider requires 'user.name' and 'user.password'");
+    }
+    
+    // Validate and extract server configuration
+    if (provider.getServer() == null) {
+      throw new IllegalArgumentException("openbis-nfs provider requires 'server' configuration");
+    }
+    String applicationUrl = provider.getServer().getApplicationUrl();
+    String dataStoreUrls = provider.getServer().getDatastoreUrls();
+    if (applicationUrl == null || dataStoreUrls == null) {
+      throw new IllegalArgumentException(
+          "openbis-nfs provider requires 'server.application-url' and 'server.datastore-urls'");
+    }
+    
+    // Extract filename configuration (optional)
+    String ignoredPrefix = "original";
+    if (provider.getFilename() != null && provider.getFilename().getIgnoredPrefix() != null) {
+      ignoredPrefix = provider.getFilename().getIgnoredPrefix();
+    }
+    
+    // Validate and extract mount-path
+    String mountPathStr = provider.getMountPath();
+    if (mountPathStr == null) {
+      throw new IllegalArgumentException("openbis-nfs provider requires 'mount-path'");
+    }
+    Path mountPath = Path.of(mountPathStr);
     
     // Create provider-specific OpenBisConnector
     List<String> dataStoreUrlList = List.of(dataStoreUrls.split(","));
@@ -102,43 +124,6 @@ public class ProviderRegistryConfig {
     );
     
     return new OpenBisNfsStorageProvider(connector, mountPath);
-  }
-
-  private static String getRequiredProperty(ProviderDefinition definition, String key) {
-    Object value = getNestedProperty(definition.properties(), key);
-    if (value == null) {
-      throw new IllegalArgumentException(
-          "Provider '" + definition.id() + "' requires property '" + key + "'");
-    }
-    return value.toString();
-  }
-
-  private static String getProperty(ProviderDefinition definition, String key, String defaultValue) {
-    Object value = getNestedProperty(definition.properties(), key);
-    return value != null ? value.toString() : defaultValue;
-  }
-
-  /**
-   * Retrieves a nested property from a map using dot notation.
-   * For example, "user.name" will look for properties.get("user").get("name").
-   */
-  @SuppressWarnings("unchecked")
-  private static Object getNestedProperty(Map<String, Object> properties, String key) {
-    String[] parts = key.split("\\.");
-    Object current = properties;
-    
-    for (String part : parts) {
-      if (current instanceof Map<?, ?> map) {
-        current = map.get(part);
-        if (current == null) {
-          return null;
-        }
-      } else {
-        return null;
-      }
-    }
-    
-    return current;
   }
 
   /**
