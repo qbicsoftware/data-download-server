@@ -106,16 +106,13 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
     
     return legacyFiles.stream()
         .map(legacyFileInfo -> {
-          // Strip the wrapper directory from the path for user-facing paths
-          // openBIS returns: original/Fastq1/file.gz
+          // Strip the wrapper directory and task-id from the path for user-facing paths
+          // openBIS returns: original/550e8400-e29b-41d4-a716-446655440000/Fastq1/file.gz
           // Users should see: Fastq1/file.gz
-          String userPath = legacyFileInfo.path();
-          if (userPath.startsWith(wrapperDirectory + "/")) {
-            userPath = userPath.substring(wrapperDirectory.length() + 1);
-          }
+          String userPath = stripWrapperAndTaskId(legacyFileInfo.path());
           
           Path relativePath = Path.of(legacyFileInfo.path());
-          Path absolutePath = physicalBasePath.resolve(wrapperDirectory).resolve(relativePath);
+          Path absolutePath = physicalBasePath.resolve(relativePath);
           
           // Get the actual file size from the filesystem
           long actualSize;
@@ -148,11 +145,8 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
     LOG.info("[NFS Provider] Resolved file info: {}", legacyFileInfo.path());
     Path filePath = resolvePhysicalPath(datasetId, legacyFileInfo);
     
-    // Strip the wrapper directory from the path for user-facing paths
-    String userPath = legacyFileInfo.path();
-    if (userPath.startsWith(wrapperDirectory + "/")) {
-      userPath = userPath.substring(wrapperDirectory.length() + 1);
-    }
+    // Strip the wrapper directory and task-id from the path for user-facing paths
+    String userPath = stripWrapperAndTaskId(legacyFileInfo.path());
     
     // Create a temporary FileInfo - the actual size will be determined from the filesystem in createDataFile
     life.qbic.data_download.storage.FileInfo.Checksum checksum =
@@ -175,11 +169,8 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
     FileInfo legacyFileInfo = resolveFileInfo(datasetId, index);
     Path filePath = resolvePhysicalPath(datasetId, legacyFileInfo);
     
-    // Strip the wrapper directory from the path for user-facing paths
-    String userPath = legacyFileInfo.path();
-    if (userPath.startsWith(wrapperDirectory + "/")) {
-      userPath = userPath.substring(wrapperDirectory.length() + 1);
-    }
+    // Strip the wrapper directory and task-id from the path for user-facing paths
+    String userPath = stripWrapperAndTaskId(legacyFileInfo.path());
     
     // Get the actual file size from the filesystem for range resolution
     long actualSize;
@@ -221,11 +212,8 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
     FileInfo legacyFileInfo = resolveFileInfo(datasetId, index);
     Path filePath = resolvePhysicalPath(datasetId, legacyFileInfo);
     
-    // Strip the wrapper directory from the path for user-facing paths
-    String userPath = legacyFileInfo.path();
-    if (userPath.startsWith(wrapperDirectory + "/")) {
-      userPath = userPath.substring(wrapperDirectory.length() + 1);
-    }
+    // Strip the wrapper directory and task-id from the path for user-facing paths
+    String userPath = stripWrapperAndTaskId(legacyFileInfo.path());
     
     // Get the actual file size from the filesystem
     long actualSize;
@@ -277,6 +265,9 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
   /**
    * Resolves the physical filesystem path for a file by fetching the physical storage location
    * from openBIS, and mapping it to the local NFS mount path.
+   * 
+   * The actual directory structure is: mountPath/physicalLocation/wrapperDirectory/taskId/relativePath
+   * where taskId is a UUID4 directory that must be discovered from the filesystem.
    */
   private Path resolvePhysicalPath(String datasetId, FileInfo fileInfo) {
     // Fetch the DataSet with physical data to get the storage location
@@ -300,9 +291,20 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
     LOG.info("[NFS Provider] Wrapper directory: {}", wrapperDirectory);
     
     // The physical location is the sharded directory structure on the DSS
-    // The actual files are under: mountPath + physicalLocation + wrapperDirectory + relativePath
-    // Example: /tmp/openbis-nfs-test/D1B57258-.../c0/0d/c3/.../original/Fastq1/Fastq1_R1_fastq.gz
-    Path physicalBasePath = mountPath.resolve(physicalLocation).resolve(wrapperDirectory);
+    // The actual files are under: mountPath + physicalLocation + wrapperDirectory + taskId + relativePath
+    // where taskId is a UUID4 directory that we need to discover
+    Path wrapperBasePath = mountPath.resolve(physicalLocation).resolve(wrapperDirectory);
+    
+    // Discover the task-id UUID4 directory under the wrapper directory
+    String taskId = discoverTaskId(wrapperBasePath, datasetId);
+    if (taskId == null) {
+      throw new StorageProviderException(
+          "Could not find task-id directory under: " + wrapperBasePath);
+    }
+    
+    LOG.info("[NFS Provider] Discovered task-id: {}", taskId);
+    
+    Path physicalBasePath = wrapperBasePath.resolve(taskId);
     Path relativePath = Path.of(fileInfo.path());
     Path absolutePath = physicalBasePath.resolve(relativePath);
     
@@ -313,6 +315,38 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
           "File not found on filesystem: " + absolutePath);
     }
     return absolutePath;
+  }
+
+  /**
+   * Discovers the task-id UUID4 directory under the wrapper directory.
+   * Returns null if no valid UUID4 directory is found.
+   */
+  private String discoverTaskId(Path wrapperBasePath, String datasetId) {
+    if (!Files.exists(wrapperBasePath) || !Files.isDirectory(wrapperBasePath)) {
+      LOG.warn("[NFS Provider] Wrapper directory does not exist: {}", wrapperBasePath);
+      return null;
+    }
+    
+    try {
+      // Look for UUID4 pattern directories
+      java.util.regex.Pattern uuidPattern = java.util.regex.Pattern.compile(
+          "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          java.util.regex.Pattern.CASE_INSENSITIVE
+      );
+      
+      try (var stream = Files.list(wrapperBasePath)) {
+        return stream
+            .filter(Files::isDirectory)
+            .map(path -> path.getFileName().toString())
+            .filter(name -> uuidPattern.matcher(name).matches())
+            .findFirst()
+            .orElse(null);
+      }
+    } catch (IOException e) {
+      LOG.error("[NFS Provider] Failed to scan wrapper directory {} for dataset {}", 
+          wrapperBasePath, datasetId, e);
+      return null;
+    }
   }
 
   /**
@@ -361,6 +395,35 @@ public class OpenBisNfsStorageProvider implements StorageProvider, ByteRangeProv
   }
 
 
+
+  /**
+   * Strips the wrapper directory and task-id UUID4 from a path.
+   * Example: "original/550e8400-e29b-41d4-a716-446655440000/Fastq1/file.gz" -> "Fastq1/file.gz"
+   */
+  private String stripWrapperAndTaskId(String path) {
+    if (path == null) {
+      return null;
+    }
+    
+    // Strip wrapper directory prefix
+    String remaining = path;
+    if (remaining.startsWith(wrapperDirectory + "/")) {
+      remaining = remaining.substring(wrapperDirectory.length() + 1);
+    }
+    
+    // Strip UUID4 task-id if present
+    java.util.regex.Pattern uuidPattern = java.util.regex.Pattern.compile(
+        "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/",
+        java.util.regex.Pattern.CASE_INSENSITIVE
+    );
+    
+    java.util.regex.Matcher matcher = uuidPattern.matcher(remaining);
+    if (matcher.find()) {
+      remaining = remaining.substring(matcher.end());
+    }
+    
+    return remaining;
+  }
 
   /**
    * An InputStream that reads from a FileChannel and closes it when done. Supports reading a
