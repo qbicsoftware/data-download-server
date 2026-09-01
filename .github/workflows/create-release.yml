@@ -42,7 +42,11 @@ jobs:
             ${{ runner.os }}-maven-
 
       - name: Set version in Maven project
-        run: mvn versions:set -DnewVersion="${{ github.event.inputs.versionTag }}" -DprocessAllModules -DgenerateBackupPoms=false
+        # Bump the centralized `revision` property in the root POM. With revision-based
+        # versioning (all modules inherit from ${revision}), the version lives in exactly
+        # one place. versions:set would overwrite the ${revision} expression, so use
+        # set-property to update the property value instead.
+        run: mvn org.codehaus.mojo:versions-maven-plugin:2.18.0:set-property -Dproperty=revision -DnewVersion="${{ github.event.inputs.versionTag }}" -DgenerateBackupPoms=false
 
       - name: Build with Maven
         run: mvn -B package --file pom.xml

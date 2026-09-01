@@ -48,6 +48,11 @@ public class OpenBisConnector implements MeasurementFinder, MeasurementDataProvi
 
   private static final String UUID_REGEX = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
 
+  /**
+   * Constructor for creating provider-specific instances with custom configuration.
+   * Used by ProviderRegistryConfig to create openBIS connectors with provider-specific settings.
+   * Also used as the Spring-injected constructor for the global openBIS connector bean.
+   */
   public OpenBisConnector(
       @Qualifier("openbisSessionFactory") SessionFactory sessionFactory,
       @Value("${openbis.server.application.url}") String applicationServerUrl,
@@ -147,6 +152,12 @@ public class OpenBisConnector implements MeasurementFinder, MeasurementDataProvi
         .toList();
   }
 
+  public List<DataSet> loadDataSetsForMeasurement(MeasurementId measurementId) {
+    try (var session = sessionFactory.getSession()) {
+      return loadDataSetsForMeasurement(session, measurementId);
+    }
+  }
+
   private List<DataSet> loadDataSetsForMeasurement(OpenBisSession session,
       MeasurementId measurementId) {
     DataSetSearchCriteria dataSetSearchCriteria = new DataSetSearchCriteria();
@@ -154,6 +165,7 @@ public class OpenBisConnector implements MeasurementFinder, MeasurementDataProvi
 
     DataSetFetchOptions dataSetFetchOptions = new DataSetFetchOptions();
     dataSetFetchOptions.withChildrenUsing(dataSetFetchOptions);
+    dataSetFetchOptions.withPhysicalData();
 
     return applicationServer.searchDataSets(session.getToken(),
         dataSetSearchCriteria,

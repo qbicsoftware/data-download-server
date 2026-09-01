@@ -6,18 +6,20 @@
 
   <groupId>life.qbic</groupId>
   <artifactId>data-download-server</artifactId>
-  <version>1.0.10</version>
+  <version>${revision}</version>
   <packaging>pom</packaging>
 
 
   <modules>
     <module>zip</module>
     <module>measurement-provider</module>
+    <module>storage-provider</module>
     <module>openbis-connector</module>
     <module>rest-api</module>
   </modules>
 
   <properties>
+    <revision>1.3.0</revision>
     <maven.compiler.source>21</maven.compiler.source>
     <maven.compiler.target>21</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
