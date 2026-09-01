@@ -4,28 +4,44 @@ Spring Boot service for downloading (bio)measurement data via the QBiC download-
 
 ## Configuration
 
-The service is configured via an **external `application.properties` file**. Place it in the
-directory from which the JAR is launched, or in a `config/` sub-directory:
+The service is configured via an external `application.properties` file. A commented,
+fully-documented template is available at
+[`rest-api/src/dist/application.properties`](rest-api/src/dist/application.properties).
+
+### Loading the external file (important)
+
+Spring Boot looks for `application.properties` relative to the **process working directory**
+(the directory you are *in* when you launch `java`), **not** relative to the JAR file's own
+location. If you just drop the file "next to the JAR" it is very easy for Spring to not find
+it — that happens whenever the JAR is launched from a different directory (or under systemd /
+a service manager that does not set the working directory).
+
+To make loading deterministic, always pass the file by absolute path on the command line:
 
 ```
-rest-server-1.0.10.jar
-config/
-  └── application.properties
+java -jar /opt/app/rest-server-1.3.0.jar \
+  --spring.config.additional-location=/opt/app/application.properties
 ```
 
-Spring Boot automatically loads this external file and it **overrides** the settings bundled
-inside the JAR. This replaces the previous environment-variable based configuration: all
-settings (openBIS credentials, database, token salt, storage providers, ports, etc.) are now
-documented and editable in one transparent place.
+Use `--spring.config.additional-location` (not `--spring.config.location`) so the bundled
+defaults inside the JAR are still used for any key the external file does not set. The
+`file:` prefix is optional when the path is absolute.
 
-A commented template is available at:
-[`rest-api/src/dist/application.properties`](rest-api/src/dist/application.properties)
+Alternatively, when running under systemd, set `WorkingDirectory` so the file is found
+relative to it:
+
+```ini
+[Service]
+WorkingDirectory=/opt/app
+ExecStart=/usr/bin/java -jar /opt/app/rest-server-1.3.0.jar
+```
 
 ### Env vars still work (optional)
 
 Spring Boot's property precedence still applies, so specific values can be overridden without
-editing the file, e.g. `SERVER_PORT=9000 java -jar rest-server.jar`. In that case the env var
-wins over the external file.
+editing the file, e.g. `SERVER_PORT=9000 java -jar rest-server.jar`. The env var wins over
+the external file. The bundled `application.properties` inside the JAR also still supports the
+original environment-variable placeholders for backward compatibility.
 
 ## Building for production
 
