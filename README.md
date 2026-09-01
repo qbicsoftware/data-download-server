@@ -90,6 +90,25 @@ mvn deploy
 
 Publishes all modules to the QBiC Nexus repository configured in `distributionManagement`.
 
+## Versioning
+
+The whole project uses **one version, defined in one place**: the `<revision>` property in the
+root [`pom.xml`](pom.xml). All modules inherit this version and their build artifacts are named
+accordingly (e.g. `rest-server-1.3.0.jar`).
+
+To change the project version, edit the single property:
+
+```xml
+<properties>
+  <revision>1.3.0</revision>
+</properties>
+```
+
+There is no per-module `<version>` anywhere - child POMs reference the parent via
+`${revision}` and inter-module dependencies via `${project.version}`, so a bump is
+applied consistently to every module in one edit. The release workflow bumps this property
+automatically (`.github/workflows/create-release.yml`).
+
 ## API documentation
 
 Run the server and visit

@@ -7,13 +7,12 @@
   <parent>
     <groupId>life.qbic</groupId>
     <artifactId>data-download-server</artifactId>
-    <version>1.0.10</version>
+    <version>${revision}</version>
   </parent>
 
   <groupId>life.qbic.data-download</groupId>
   <artifactId>openbis-connector</artifactId>
   <packaging>jar</packaging>
-  <version>1.0.10</version>
 
   <dependencyManagement>
     <dependencies>
@@ -66,12 +65,12 @@
     <dependency>
       <groupId>life.qbic.data-download</groupId>
       <artifactId>measurement-provider</artifactId>
-      <version>1.0.10</version>
+      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>life.qbic.data-download</groupId>
       <artifactId>storage-provider</artifactId>
-      <version>1.0.10</version>
+      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
