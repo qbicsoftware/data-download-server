@@ -446,6 +446,7 @@ public class MeasurementFileControllerV2 {
     long totalBytesWritten = 0;
     long bytesSinceLastLog = 0;
     long lastProgressLogTime = System.currentTimeMillis();
+    long lastNearFullLogTime = 0; // 0 so the first near-full warning is never throttled away
     try {
       while (!transfer.done.get() || !transfer.queue.isEmpty()) {
         byte[] data = transfer.queue.poll(POLL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
@@ -453,7 +454,7 @@ public class MeasurementFileControllerV2 {
           outputStream.write(data);
           totalBytesWritten += data.length;
           bytesSinceLastLog += data.length;
-          logNearFullQueue(transfer, filePath, measurementId);
+          lastNearFullLogTime = logNearFullQueue(transfer, filePath, measurementId, lastNearFullLogTime);
           long[] result = logProgress(totalBytesWritten, bytesSinceLastLog, contentLength,
               lastProgressLogTime, filePath, measurementId, transfer.queue.size());
           lastProgressLogTime = result[0];
@@ -471,12 +472,22 @@ public class MeasurementFileControllerV2 {
     }
   }
 
-  private void logNearFullQueue(Transfer transfer, String filePath, String measurementId) {
+  /**
+   * Logs a warning when the download queue is nearly full, throttled to at most one
+   * warning per {@code progressLogIntervalMs} to avoid flooding the logs when the
+   * queue stays near-full throughout a download. Returns the updated timestamp of the
+   * last logged warning.
+   */
+  private long logNearFullQueue(Transfer transfer, String filePath, String measurementId,
+      long lastNearFullLogTime) {
     int freeCapacity = downloadQueueCapacity - transfer.queue.size();
-    if (freeCapacity < nearFullQueueCapacity) {
+    long now = System.currentTimeMillis();
+    if (freeCapacity < nearFullQueueCapacity && (now - lastNearFullLogTime) >= progressLogIntervalMs) {
       log.warn("Download queue nearly full for file {} of measurement {}: {} of {} slots free (v2)",
           filePath, measurementId, freeCapacity, downloadQueueCapacity);
+      return now;
     }
+    return lastNearFullLogTime;
   }
 
   private long[] logProgress(long totalBytesWritten, long bytesSinceLastLog, long contentLength,

@@ -316,6 +316,7 @@ public class MeasurementFileController {
     long totalBytesWritten = 0;
     long bytesSinceLastLog = 0;
     long lastProgressLogTime = System.currentTimeMillis();
+    long lastNearFullLogTime = 0; // 0 so the first near-full warning is never throttled away
     try {
       while (!transfer.done.get() || !transfer.queue.isEmpty()) {
         byte[] data = transfer.queue.poll(POLL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
@@ -323,7 +324,7 @@ public class MeasurementFileController {
           outputStream.write(data);
           totalBytesWritten += data.length;
           bytesSinceLastLog += data.length;
-          logNearFullQueue(transfer, filePath, measurementId);
+          lastNearFullLogTime = logNearFullQueue(transfer, filePath, measurementId, lastNearFullLogTime);
           long[] result = logProgress(totalBytesWritten, bytesSinceLastLog, contentLength,
               lastProgressLogTime, filePath, measurementId, transfer.queue.size());
           lastProgressLogTime = result[0];
@@ -342,16 +343,23 @@ public class MeasurementFileController {
   }
 
   /**
-   * Logs a warning whenever the bounded queue has fewer than {@link #nearFullQueueCapacity} free
+   * Logs a warning when the bounded queue has fewer than {@link #nearFullQueueCapacity} free
    * slots. A repeatedly near-full queue indicates the consumer (client write) cannot keep up with
    * the producer (DSS read), which is a precursor to backpressure stalling the download.
+   * <p>The warning is throttled to at most one per {@link #progressLogIntervalMs} so a queue that
+   * stays near-full for the whole download does not flood the logs. Returns the updated timestamp
+   * of the last logged warning.
    */
-  private void logNearFullQueue(Transfer transfer, String filePath, String measurementId) {
+  private long logNearFullQueue(Transfer transfer, String filePath, String measurementId,
+      long lastNearFullLogTime) {
     int freeCapacity = downloadQueueCapacity - transfer.queue.size();
-    if (freeCapacity < nearFullQueueCapacity) {
+    long now = System.currentTimeMillis();
+    if (freeCapacity < nearFullQueueCapacity && (now - lastNearFullLogTime) >= progressLogIntervalMs) {
       log.warn("Download queue nearly full for file {} of measurement {}: {} of {} slots free",
           filePath, measurementId, freeCapacity, downloadQueueCapacity);
+      return now;
     }
+    return lastNearFullLogTime;
   }
 
   /** Logs download progress at most once per {@link #progressLogIntervalMs}. Throughput is
