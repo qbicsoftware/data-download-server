@@ -29,7 +29,7 @@ import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
-class MeasurementFileControllerV2Test {
+class MeasurementFileControllerTest {
 
   private static final FileInfo CHECKSUM_FILE = new FileInfo("/data/read1.fastq.gz",
       "read1.fastq.gz", 1024, new FileInfo.Checksum("crc32", "123456789"), 1700000000000L,
@@ -39,13 +39,13 @@ class MeasurementFileControllerV2Test {
 
   private FakeProviderRegistry providerRegistry;
   private StorageFileIndex storageFileIndex;
-  private MeasurementFileControllerV2 controller;
+  private MeasurementFileController controller;
 
   @BeforeEach
   void setUp() {
     providerRegistry = new FakeProviderRegistry();
     storageFileIndex = new StorageFileIndex(providerRegistry, Duration.ofMinutes(1));
-    controller = new MeasurementFileControllerV2(
+    controller = new MeasurementFileController(
         providerRegistry, storageFileIndex,
         1024, 4, 30000L, 3);
     SecurityContextHolder.getContext()
