@@ -1,10 +1,12 @@
 package life.qbic.data_download.openbis;
 
 import static java.util.Objects.requireNonNull;
+import static org.slf4j.LoggerFactory.getLogger;
 
 import java.io.IOException;
 import java.io.InputStream;
 import life.qbic.data_download.openbis.SessionFactory.OpenBisSession;
+import org.slf4j.Logger;
 
 /**
  * Wraps an {@link InputStream} that is bound to an {@link OpenBisSession}. The underlying stream is
@@ -33,6 +35,7 @@ public class SessionAwareInputStream extends InputStream {
 
   @Override
   public int read(byte[] b, int off, int len) throws IOException {
+    session.getToken();
     return delegate.read(b, off, len);
   }
 
