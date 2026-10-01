@@ -2,61 +2,65 @@ package life.qbic.data_download.rest.security.acl;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 class JdbcGroupSidProviderTest {
 
-  private static final String QUERY = """
-      SELECT m.group_id
-      FROM group_membership m
-      JOIN user_group g ON g.id = m.group_id
-      WHERE m.user_id = ? AND g.status = 'ACTIVE'
-      """;
+  /** A {@link JdbcTemplate} test double that records the user id argument and returns a fixed list. */
+  private static final class RecordingJdbcTemplate extends JdbcTemplate {
+
+    private final List<String> result;
+    private final List<Object> queriedArguments = new ArrayList<>();
+
+    RecordingJdbcTemplate(List<String> result) {
+      super(new DriverManagerDataSource());
+      this.result = result;
+    }
+
+    @Override
+    public <T> List<T> queryForList(String sql, Class<T> elementType, Object... args) {
+      queriedArguments.add(args.length == 0 ? null : args[0]);
+      @SuppressWarnings("unchecked")
+      List<T> typedResult = (List<T>) result;
+      return typedResult;
+    }
+  }
 
   @Test
   @DisplayName("the user id is passed to the query and returned group ids are prefixed with GROUP_")
   void userIdIsPassedAndGroupIdsArePrefixed() {
-    JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-    when(jdbcTemplate.queryForList(QUERY, String.class, "user-1"))
-        .thenReturn(List.of("42", "1337"));
-
+    RecordingJdbcTemplate jdbcTemplate = new RecordingJdbcTemplate(List.of("42", "1337"));
     JdbcGroupSidProvider provider = new JdbcGroupSidProvider(jdbcTemplate);
 
     List<String> sids = provider.listGroupSidsForUser("user-1");
 
-    verify(jdbcTemplate).queryForList(QUERY, String.class, "user-1");
+    assertEquals(List.of("user-1"), jdbcTemplate.queriedArguments);
     assertEquals(List.of("GROUP_42", "GROUP_1337"), sids);
   }
 
   @Test
   @DisplayName("a null user id yields an empty list and the repository is not queried")
   void nullUserIdYieldsEmptyListWithoutQuerying() {
-    JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-
+    RecordingJdbcTemplate jdbcTemplate = new RecordingJdbcTemplate(List.of("42"));
     JdbcGroupSidProvider provider = new JdbcGroupSidProvider(jdbcTemplate);
 
     assertTrue(provider.listGroupSidsForUser(null).isEmpty());
-    verify(jdbcTemplate, never()).queryForList(eq(QUERY), eq(String.class), any());
+    assertTrue(jdbcTemplate.queriedArguments.isEmpty(), "the query must not run for a null user id");
   }
 
   @Test
   @DisplayName("a blank user id yields an empty list and the repository is not queried")
   void blankUserIdYieldsEmptyListWithoutQuerying() {
-    JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-
+    RecordingJdbcTemplate jdbcTemplate = new RecordingJdbcTemplate(List.of("42"));
     JdbcGroupSidProvider provider = new JdbcGroupSidProvider(jdbcTemplate);
 
     assertTrue(provider.listGroupSidsForUser("   ").isEmpty());
-    verify(jdbcTemplate, never()).queryForList(eq(QUERY), eq(String.class), any());
+    assertTrue(jdbcTemplate.queriedArguments.isEmpty(), "the query must not run for a blank user id");
   }
 }
