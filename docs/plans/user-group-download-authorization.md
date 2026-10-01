@@ -36,7 +36,8 @@ A second, pre-existing defect blocks the feature as well: `SecurityConfig.aclCac
 ACL is read it is cached for the process lifetime. A group shared *after* that first read would not
 grant access until the server restarts. `rest-api/src/main/resources/ehcache3.xml` (30 s TTL) and
 `spring.cache.jcache.config` exist but are dead configuration — no cache provider is on the
-classpath and the code ignores them.
+classpath, and even with one Ehcache's XML parser needs `javax.xml.bind` (JAXB), which no longer
+ships with the JDK. The code ignores both.
 
 The message broker is **not** available to the download server, so the data-manager broadcast
 eviction mechanism (strategy §4.6 / plan D5) cannot be reused. The ACL cache must instead get a
@@ -152,36 +153,38 @@ In `SecurityConfig`:
 
 ### 3.4 ACL cache TTL
 
-Replace the untimed `ConcurrentMapCacheManager` with a Caffeine-backed manager that expires entries
-after a configurable duration:
+Replace the untimed `ConcurrentMapCacheManager` with an Ehcache 3 cache (via the JCache API) that
+expires entries after a configurable duration. The pre-existing `ehcache3.xml` is **not** usable:
+Ehcache's XML parser requires `javax.xml.bind` (JAXB), which no longer ships with the JDK, and the
+file was dead config (no Ehcache/JCache dependency was ever declared). Configure Ehcache
+programmatically instead — same single-dependency footprint, no JAXB, no dead XML:
 
 ```java
-@Bean
-protected AclCache aclCache(
+@Bean("aclCacheManager")
+public CacheManager aclCacheManager(
     @Value("${qbic.access-management.acl-cache-ttl:30s}") Duration aclCacheTtl) {
-  CaffeineCacheManager cacheManager = aclCacheManager(aclCacheTtl);
-  return new SpringCacheBasedAclCache(
-      cacheManager.getCache("acl_cache"), permissionGrantingStrategy(), aclAuthorizationStrategy());
-}
-
-static CaffeineCacheManager aclCacheManager(Duration ttl) {
-  CaffeineCacheManager manager = new CaffeineCacheManager("acl_cache");
-  manager.setCaffeine(Caffeine.newBuilder()
-      .expireAfterWrite(ttl)
-      .maximumSize(1_000));
-  return manager;
+  javax.cache.CacheManager jcacheManager = Caching.getCachingProvider(
+      "org.ehcache.jsr107.EhcacheCachingProvider").getCacheManager();
+  jcacheManager.createCache("acl_cache",
+      new MutableConfiguration<Object, MutableAcl>()
+          .setTypes(Object.class, MutableAcl.class)
+          .setStoreByValue(false)
+          .setExpiryPolicyFactory(ModifiedExpiryPolicy.factoryOf(
+              new javax.cache.expiry.Duration(TimeUnit.MILLISECONDS, aclCacheTtl.toMillis()))));
+  return new JCacheCacheManager(jcacheManager);
 }
 ```
 
-- Add `spring-boot-starter-cache` + `com.github.ben-manes.caffeine:caffeine` to
-  `rest-api/pom.xml` (versions managed by the Spring Boot BOM).
+- Add `spring-boot-starter-cache` + `org.ehcache:ehcache` to `rest-api/pom.xml` (Ehcache version
+  managed by the Spring Boot BOM; the Ehcache artifact brings `javax.cache:cache-api`).
 - Add `qbic.access-management.acl-cache-ttl=${ACL_CACHE_TTL:30s}` to `application.properties`
   (30 s keeps the ≤ 60 s revocation window).
-- Remove the dead `spring.cache.jcache.config` property and `rest-api/src/main/resources/ehcache3.xml`
-  (superseded; avoids two competing cache configurations).
+- Delete the dead `rest-api/src/main/resources/ehcache3.xml` (unparseable without JAXB) and drop
+  `spring.cache.jcache.config`.
 
-The cache stays keyed by `ObjectIdentity`; only the eviction policy changes. No write-path change is
-needed because the download server never calls `updateAcl`.
+`JCacheCacheManager` closes the JCache manager on context shutdown. The cache stays keyed by
+`ObjectIdentity`; only the eviction policy changes. No write-path change is needed because the
+download server never calls `updateAcl`.
 
 ---
 
@@ -193,9 +196,9 @@ needed because the download server never calls `updateAcl`.
 | `rest-api/src/main/java/life/qbic/data_download/rest/security/acl/JdbcGroupSidProvider.java` | create |
 | `rest-api/src/main/java/life/qbic/data_download/rest/security/GroupAwareSidRetrievalStrategy.java` | create |
 | `rest-api/src/main/java/life/qbic/data_download/rest/config/SecurityConfig.java` | modify (`groupSidProvider` bean, `permissionEvaluator`, `aclCache` TTL) |
-| `rest-api/pom.xml` | modify (cache + caffeine dependencies) |
-| `rest-api/src/main/resources/application.properties` | modify (TTL property, drop jcache property) |
-| `rest-api/src/main/resources/ehcache3.xml` | delete |
+| `rest-api/pom.xml` | modify (`spring-boot-starter-cache` + `org.ehcache:ehcache`) |
+| `rest-api/src/main/resources/application.properties` | modify (TTL property) |
+| `rest-api/src/main/resources/ehcache3.xml` | delete (dead: XML config requires JAXB) |
 | `rest-api/src/test/java/life/qbic/data_download/rest/security/GroupAwareSidRetrievalStrategyTest.java` | create |
 | `rest-api/src/test/java/life/qbic/data_download/rest/security/acl/JdbcGroupSidProviderTest.java` | create |
 | `rest-api/src/test/java/life/qbic/data_download/rest/config/AclCacheConfigurationTest.java` | create |
@@ -204,8 +207,8 @@ needed because the download server never calls `updateAcl`.
 
 ## 5. Tests
 
-All tests are JUnit 5 + Mockito (`spring-boot-starter-test`), matching existing
-`rest-api` tests (`QBicTokenEncoderTest`, `MeasurementFileIndexTest`).
+All tests are JUnit 5 with plain test doubles, matching existing `rest-api` tests
+(`QBicTokenEncoderTest`, `MeasurementFileIndexTest`).
 
 1. `GroupAwareSidRetrievalStrategyTest`
    - default SIDs (principal + authority SIDs) are preserved;
@@ -216,9 +219,9 @@ All tests are JUnit 5 + Mockito (`spring-boot-starter-test`), matching existing
    - user id is passed to the query and returned `group_id`s are prefixed with `GROUP_`;
    - null/blank user id → empty list, repository not called.
 3. `AclCacheConfigurationTest`
-   - `SecurityConfig.aclCacheManager(30 s)` yields a native Caffeine cache whose
-     `policy().expireAfterWrite()` is present and equals the TTL.
-   - This is the regression guard for the stale-ACL defect; assert policy presence rather than
+   - `SecurityConfig.aclCacheManager(30 s)` returns a `JCacheCacheManager` (Ehcache JCache) whose
+     `acl_cache` JCache configuration expires entries after the requested TTL.
+   - This is the regression guard for the stale-ACL defect; assert the configured TTL rather than
      wall-clock expiry to avoid flakiness.
 
 ---
