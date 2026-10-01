@@ -2,12 +2,17 @@ package life.qbic.data_download.rest.config;
 
 import static org.springframework.security.authorization.AuthorizationManagers.anyOf;
 
+import com.github.benmanes.caffeine.cache.Caffeine;
+import java.time.Duration;
 import javax.sql.DataSource;
+import life.qbic.data_download.rest.security.GroupAwareSidRetrievalStrategy;
 import life.qbic.data_download.rest.security.QBiCTokenAuthenticationFilter;
 import life.qbic.data_download.rest.security.QBiCTokenAuthenticationProvider;
 import life.qbic.data_download.rest.security.QBicTokenEncoder;
 import life.qbic.data_download.rest.security.RequestAuthorizationManagerFactory;
 import life.qbic.data_download.rest.security.TokenEncoder;
+import life.qbic.data_download.rest.security.acl.GroupSidProvider;
+import life.qbic.data_download.rest.security.acl.JdbcGroupSidProvider;
 import life.qbic.data_download.rest.security.acl.MeasurementMappingService;
 import life.qbic.data_download.rest.security.acl.QBiCMeasurementMappingService;
 import life.qbic.data_download.rest.security.acl.QbicPermissionEvaluator;
@@ -20,10 +25,10 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceProperties;
-import org.springframework.cache.CacheManager;
-import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
+import org.springframework.cache.caffeine.CaffeineCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.PermissionEvaluator;
 import org.springframework.security.access.expression.method.DefaultMethodSecurityExpressionHandler;
 import org.springframework.security.access.expression.method.MethodSecurityExpressionHandler;
@@ -163,12 +168,21 @@ public class SecurityConfig {
     }
 
   @Bean
-  protected AclCache aclCache() {
-    CacheManager cacheManager = new ConcurrentMapCacheManager();
+  protected AclCache aclCache(
+      @Value("${qbic.access-management.acl-cache-ttl:30s}") Duration aclCacheTtl) {
+    CaffeineCacheManager cacheManager = aclCacheManager(aclCacheTtl);
     return new SpringCacheBasedAclCache(
         cacheManager.getCache("acl_cache"),
         permissionGrantingStrategy(),
         aclAuthorizationStrategy());
+  }
+
+  static CaffeineCacheManager aclCacheManager(Duration ttl) {
+    CaffeineCacheManager cacheManager = new CaffeineCacheManager("acl_cache");
+    cacheManager.setCaffeine(Caffeine.newBuilder()
+        .expireAfterWrite(ttl)
+        .maximumSize(1_000));
+    return cacheManager;
   }
 
   @Bean(name="securityDataSourceProperties")
@@ -186,10 +200,11 @@ public class SecurityConfig {
 
   @Bean("idSupportingLookupStrategy")
   public LookupStrategy lookupStrategy(
-      @Qualifier("securityDataSource") DataSource dataSource) {
+      @Qualifier("securityDataSource") DataSource dataSource,
+      AclCache aclCache) {
     BasicLookupStrategy basicLookupStrategy = new BasicLookupStrategy(
         dataSource,
-        aclCache(),
+        aclCache,
         aclAuthorizationStrategy(),
         auditLogger()
     );
@@ -201,9 +216,10 @@ public class SecurityConfig {
   @Bean("aclService")
   public MutableAclService mutableAclService(
       @Qualifier("securityDataSource") DataSource dataSource,
-      @Qualifier("idSupportingLookupStrategy") LookupStrategy lookupStrategy) {
+      @Qualifier("idSupportingLookupStrategy") LookupStrategy lookupStrategy,
+      AclCache aclCache) {
     JdbcMutableAclService jdbcMutableAclService = new JdbcMutableAclService(dataSource,
-        lookupStrategy, aclCache());
+        lookupStrategy, aclCache);
     // allow for non-long type ids
     jdbcMutableAclService.setAclClassIdSupported(true);
 
@@ -217,11 +233,21 @@ public class SecurityConfig {
     return new QBiCMeasurementMappingService(ngsMeasurementRepository, proteomicsMeasurementRepository);
   }
 
+  @Bean("groupSidProvider")
+  public GroupSidProvider groupSidProvider(
+      @Qualifier("securityDataSource") DataSource dataSource) {
+    return new JdbcGroupSidProvider(new JdbcTemplate(dataSource));
+  }
+
   @Bean("permissionEvaluator")
   public PermissionEvaluator permissionEvaluator(
       @Qualifier("aclService") AclService aclService,
-      @Qualifier("measurementMappingService") MeasurementMappingService measurementMappingService) {
-    return new QbicPermissionEvaluator(aclService, measurementMappingService);
+      @Qualifier("measurementMappingService") MeasurementMappingService measurementMappingService,
+      @Qualifier("groupSidProvider") GroupSidProvider groupSidProvider) {
+    QbicPermissionEvaluator evaluator = new QbicPermissionEvaluator(aclService,
+        measurementMappingService);
+    evaluator.setSidRetrievalStrategy(new GroupAwareSidRetrievalStrategy(groupSidProvider));
+    return evaluator;
   }
 
   @Bean
