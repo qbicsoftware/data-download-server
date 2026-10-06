@@ -2,11 +2,6 @@ package life.qbic.data_download.rest.config;
 
 import static org.springframework.security.authorization.AuthorizationManagers.anyOf;
 
-import java.time.Duration;
-import java.util.concurrent.TimeUnit;
-import javax.cache.Caching;
-import javax.cache.configuration.MutableConfiguration;
-import javax.cache.expiry.ModifiedExpiryPolicy;
 import javax.sql.DataSource;
 import life.qbic.data_download.rest.security.GroupAwareSidRetrievalStrategy;
 import life.qbic.data_download.rest.security.QBiCTokenAuthenticationFilter;
@@ -29,7 +24,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceProperties;
 import org.springframework.cache.CacheManager;
-import org.springframework.cache.jcache.JCacheCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -47,7 +41,6 @@ import org.springframework.security.acls.jdbc.LookupStrategy;
 import org.springframework.security.acls.model.AclCache;
 import org.springframework.security.acls.model.AclService;
 import org.springframework.security.acls.model.AuditableAccessControlEntry;
-import org.springframework.security.acls.model.MutableAcl;
 import org.springframework.security.acls.model.MutableAclService;
 import org.springframework.security.acls.model.PermissionGrantingStrategy;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -172,25 +165,10 @@ public class SecurityConfig {
       return new DefaultPermissionGrantingStrategy(auditLogger());
     }
 
-  @Bean("aclCacheManager")
-  public CacheManager aclCacheManager(
-      @Value("${qbic.access-management.acl-cache-ttl:30s}") Duration aclCacheTtl) {
-    javax.cache.CacheManager jcacheManager = Caching.getCachingProvider(
-        "org.ehcache.jsr107.EhcacheCachingProvider").getCacheManager();
-    jcacheManager.createCache("acl_cache",
-        new MutableConfiguration<Object, MutableAcl>()
-            .setTypes(Object.class, MutableAcl.class)
-            .setStoreByValue(false)
-            .setExpiryPolicyFactory(ModifiedExpiryPolicy.factoryOf(
-                new javax.cache.expiry.Duration(TimeUnit.MILLISECONDS,
-                    aclCacheTtl.toMillis()))));
-    return new JCacheCacheManager(jcacheManager);
-  }
-
   @Bean
-  protected AclCache aclCache(@Qualifier("aclCacheManager") CacheManager aclCacheManager) {
+  protected AclCache aclCache(CacheManager cacheManager) {
     return new SpringCacheBasedAclCache(
-        aclCacheManager.getCache("acl_cache"),
+        cacheManager.getCache(AclCacheConfig.ACL_CACHE_NAME),
         permissionGrantingStrategy(),
         aclAuthorizationStrategy());
   }

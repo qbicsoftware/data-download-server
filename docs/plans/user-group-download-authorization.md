@@ -35,9 +35,11 @@ A second, pre-existing defect blocks the feature as well: `SecurityConfig.aclCac
 `ConcurrentMapCacheManager` with **no TTL**. The download server never writes ACLs, so once a project
 ACL is read it is cached for the process lifetime. A group shared *after* that first read would not
 grant access until the server restarts. `rest-api/src/main/resources/ehcache3.xml` (30 s TTL) and
-`spring.cache.jcache.config` exist but are dead configuration — no cache provider is on the
-classpath, and even with one Ehcache's XML parser needs `javax.xml.bind` (JAXB), which no longer
-ships with the JDK. The code ignores both.
+`spring.cache.jcache.config` exist but are dead configuration: no `CachingProvider` is on the
+classpath, and the app neither enables caching nor lets Boot manage a `CacheManager`, so Boot's
+`CacheAutoConfiguration` (and with it the `JCacheCacheConfiguration` that reads the property) never
+runs. Ehcache's XML parser additionally needs `javax.xml.bind` (JAXB), which no longer ships with
+the JDK. The code ignores all of this.
 
 The message broker is **not** available to the download server, so the data-manager broadcast
 eviction mechanism (strategy §4.6 / plan D5) cannot be reused. The ACL cache must instead get a
@@ -153,38 +155,63 @@ In `SecurityConfig`:
 
 ### 3.4 ACL cache TTL
 
-Replace the untimed `ConcurrentMapCacheManager` with an Ehcache 3 cache (via the JCache API) that
-expires entries after a configurable duration. The pre-existing `ehcache3.xml` is **not** usable:
-Ehcache's XML parser requires `javax.xml.bind` (JAXB), which no longer ships with the JDK, and the
-file was dead config (no Ehcache/JCache dependency was ever declared). Configure Ehcache
-programmatically instead — same single-dependency footprint, no JAXB, no dead XML:
+Let Spring Boot own the cache. With `spring.cache.type=jcache` and `org.ehcache:ehcache` on the
+classpath, Boot's `CacheAutoConfiguration` creates the `JCacheCacheManager`; the single `acl_cache`
+cache (and its TTL) is customized through the idiomatic `JCacheManagerCustomizer` seam. This avoids
+a hand-rolled `CacheManager` bean — which, due to `@ConditionalOnMissingBean(CacheManager.class)`,
+would suppress Boot's cache auto-configuration entirely and defeat `CacheManagerCustomizer` beans.
+No XML and no JAXB are involved either way; the XML path is dead config that also requires JAXB,
+which no longer ships with the JDK.
+
+New `AclCacheConfig` (package `life.qbic.data_download.rest.config`):
 
 ```java
-@Bean("aclCacheManager")
-public CacheManager aclCacheManager(
-    @Value("${qbic.access-management.acl-cache-ttl:30s}") Duration aclCacheTtl) {
-  javax.cache.CacheManager jcacheManager = Caching.getCachingProvider(
-      "org.ehcache.jsr107.EhcacheCachingProvider").getCacheManager();
-  jcacheManager.createCache("acl_cache",
-      new MutableConfiguration<Object, MutableAcl>()
-          .setTypes(Object.class, MutableAcl.class)
-          .setStoreByValue(false)
-          .setExpiryPolicyFactory(ModifiedExpiryPolicy.factoryOf(
-              new javax.cache.expiry.Duration(TimeUnit.MILLISECONDS, aclCacheTtl.toMillis()))));
-  return new JCacheCacheManager(jcacheManager);
+@Configuration(proxyBeanMethods = false)
+@EnableCaching
+public class AclCacheConfig {
+
+  static final String ACL_CACHE_NAME = "acl_cache";
+
+  @Bean
+  JCacheManagerCustomizer aclCacheCustomizer(
+      @Value("${qbic.access-management.acl-cache-ttl:30s}") Duration aclCacheTtl) {
+    return cacheManager -> cacheManager.createCache(ACL_CACHE_NAME,
+        aclCacheConfiguration(aclCacheTtl));
+  }
+
+  static MutableConfiguration<Object, MutableAcl> aclCacheConfiguration(Duration aclCacheTtl) {
+    return new MutableConfiguration<Object, MutableAcl>()
+        .setTypes(Object.class, MutableAcl.class)
+        .setStoreByValue(false)
+        .setExpiryPolicyFactory(ModifiedExpiryPolicy.factoryOf(
+            new javax.cache.expiry.Duration(TimeUnit.MILLISECONDS, aclCacheTtl.toMillis())));
+  }
 }
 ```
 
+`ModifiedExpiryPolicy` is `expireAfterWrite`-equivalent: `getExpiryForAccess()` returns `null`, so
+reads do not extend an entry's lifetime.
+
 - Add `spring-boot-starter-cache` + `org.ehcache:ehcache` to `rest-api/pom.xml` (Ehcache version
   managed by the Spring Boot BOM; the Ehcache artifact brings `javax.cache:cache-api`).
-- Add `qbic.access-management.acl-cache-ttl=${ACL_CACHE_TTL:30s}` to `application.properties`
-  (30 s keeps the ≤ 60 s revocation window).
-- Delete the dead `rest-api/src/main/resources/ehcache3.xml` (unparseable without JAXB) and drop
-  `spring.cache.jcache.config`.
+- Add `spring.cache.type=jcache` and `qbic.access-management.acl-cache-ttl=${ACL_CACHE_TTL:30s}` to
+  `application.properties` (30 s keeps the ≤ 60 s revocation window).
+- Delete the dead `rest-api/src/main/resources/ehcache3.xml` (unparseable without JAXB).
+- `SecurityConfig.aclCache(CacheManager)` injects the Boot-provided `CacheManager`:
 
-`JCacheCacheManager` closes the JCache manager on context shutdown. The cache stays keyed by
-`ObjectIdentity`; only the eviction policy changes. No write-path change is needed because the
-download server never calls `updateAcl`.
+  ```java
+  @Bean
+  protected AclCache aclCache(CacheManager cacheManager) {
+    return new SpringCacheBasedAclCache(
+        cacheManager.getCache(AclCacheConfig.ACL_CACHE_NAME),
+        permissionGrantingStrategy(),
+        aclAuthorizationStrategy());
+  }
+  ```
+
+Boot closes the JCache manager on context shutdown. The cache stays keyed by `ObjectIdentity`; only
+the eviction policy changes. No write-path change is needed because the download server never calls
+`updateAcl`.
 
 ---
 
@@ -195,9 +222,10 @@ download server never calls `updateAcl`.
 | `rest-api/src/main/java/life/qbic/data_download/rest/security/acl/GroupSidProvider.java` | create |
 | `rest-api/src/main/java/life/qbic/data_download/rest/security/acl/JdbcGroupSidProvider.java` | create |
 | `rest-api/src/main/java/life/qbic/data_download/rest/security/GroupAwareSidRetrievalStrategy.java` | create |
-| `rest-api/src/main/java/life/qbic/data_download/rest/config/SecurityConfig.java` | modify (`groupSidProvider` bean, `permissionEvaluator`, `aclCache` TTL) |
+| `rest-api/src/main/java/life/qbic/data_download/rest/config/SecurityConfig.java` | modify (`groupSidProvider` bean, `permissionEvaluator`, `aclCache` uses Boot `CacheManager`) |
+| `rest-api/src/main/java/life/qbic/data_download/rest/config/AclCacheConfig.java` | create (Boot-managed JCache `acl_cache` with TTL) |
 | `rest-api/pom.xml` | modify (`spring-boot-starter-cache` + `org.ehcache:ehcache`) |
-| `rest-api/src/main/resources/application.properties` | modify (TTL property) |
+| `rest-api/src/main/resources/application.properties` | modify (`spring.cache.type` + TTL property) |
 | `rest-api/src/main/resources/ehcache3.xml` | delete (dead: XML config requires JAXB) |
 | `rest-api/src/test/java/life/qbic/data_download/rest/security/GroupAwareSidRetrievalStrategyTest.java` | create |
 | `rest-api/src/test/java/life/qbic/data_download/rest/security/acl/JdbcGroupSidProviderTest.java` | create |
@@ -219,10 +247,11 @@ All tests are JUnit 5 with plain test doubles, matching existing `rest-api` test
    - user id is passed to the query and returned `group_id`s are prefixed with `GROUP_`;
    - null/blank user id → empty list, repository not called.
 3. `AclCacheConfigurationTest`
-   - `SecurityConfig.aclCacheManager(30 s)` returns a `JCacheCacheManager` (Ehcache JCache) whose
-     `acl_cache` JCache configuration expires entries after the requested TTL.
-   - This is the regression guard for the stale-ACL defect; assert the configured TTL rather than
-     wall-clock expiry to avoid flakiness.
+   - Boot's JCache auto-configuration provides the `acl_cache` as a `JCacheCache` on a
+     `JCacheCacheManager` (via the `JCacheManagerCustomizer`);
+   - the configured TTL is applied to creation and update, and a custom TTL overrides the default;
+   - `getExpiryForAccess()` is `null`, so reads do not extend an entry's lifetime;
+   - an entry is actually evicted after a short TTL (regression guard for the stale-ACL defect).
 
 ---
 
@@ -260,6 +289,10 @@ mvn -B -pl rest-api -am package -DskipTests
   acceptable, and required for fresh revocation. Do not add a long-lived membership cache.
 - **TTL window:** 30 s default is within the ≤ 60 s revocation NFR. Keep it configurable so
   operations can tune it.
+- **JAXB:** the programmatic/Boot JCache path does not *require* a JAXB runtime, but
+  `org.ehcache:ehcache` declares an optional/non-pinned `org.glassfish.jaxb:jaxb-runtime` runtime
+  dependency, so a JAXB runtime may still land on the classpath. The point is only that the app no
+  longer relies on Ehcache XML parsing (which would hard-require JAXB).
 - **`SidRetrievalStrategyImpl` deprecation:** verify the imported symbol against the Spring Security
   version in use; if a replacement is mandated by Spring Boot 4.1, use the current API and note it
   in the report. Do not hand-roll principal/authority extraction if the framework still provides it.
