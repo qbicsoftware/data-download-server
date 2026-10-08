@@ -109,7 +109,7 @@ public class SecurityConfig {
             authorizedRequest
                 .requestMatchers(ignoredEndpoints)
                 .permitAll())
-        //.redirectToHttps(Customizer.withDefaults())
+        .redirectToHttps(Customizer.withDefaults())
         .authenticationProvider(authenticationProvider)
         .addFilterAt(tokenAuthenticationFilter, BasicAuthenticationFilter.class)
         .authorizeHttpRequests(authorizedRequest ->
