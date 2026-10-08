@@ -16,6 +16,7 @@ import life.qbic.data_download.rest.security.acl.JdbcGroupSidProvider;
 import life.qbic.data_download.rest.security.acl.MeasurementMappingService;
 import life.qbic.data_download.rest.security.acl.QBiCMeasurementMappingService;
 import life.qbic.data_download.rest.security.acl.QbicPermissionEvaluator;
+import life.qbic.data_download.rest.security.jpa.measurement.ImmunopeptidomicsMeasurementRepository;
 import life.qbic.data_download.rest.security.jpa.measurement.NGSMeasurementRepository;
 import life.qbic.data_download.rest.security.jpa.measurement.ProteomicsMeasurementRepository;
 import life.qbic.data_download.rest.security.jpa.token.EncodedAccessTokenRepository;
@@ -241,8 +242,10 @@ public class SecurityConfig {
   @Bean("measurementMappingService")
   public MeasurementMappingService measurementMappingService(
       ProteomicsMeasurementRepository proteomicsMeasurementRepository,
-      NGSMeasurementRepository ngsMeasurementRepository) {
-    return new QBiCMeasurementMappingService(ngsMeasurementRepository, proteomicsMeasurementRepository);
+      NGSMeasurementRepository ngsMeasurementRepository,
+      ImmunopeptidomicsMeasurementRepository immunopeptidomicsMeasurementRepository) {
+    return new QBiCMeasurementMappingService(ngsMeasurementRepository,
+        proteomicsMeasurementRepository, immunopeptidomicsMeasurementRepository);
   }
 
   @Bean("groupSidProvider")
