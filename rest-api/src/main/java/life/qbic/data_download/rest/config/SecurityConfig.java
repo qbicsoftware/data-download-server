@@ -7,6 +7,8 @@ import life.qbic.data_download.rest.security.GroupAwareSidRetrievalStrategy;
 import life.qbic.data_download.rest.security.QBiCTokenAuthenticationFilter;
 import life.qbic.data_download.rest.security.QBiCTokenAuthenticationProvider;
 import life.qbic.data_download.rest.security.QBicTokenEncoder;
+import life.qbic.data_download.rest.security.QbicTokenAccessDeniedHandler;
+import life.qbic.data_download.rest.security.QbicTokenAuthenticationEntryPoint;
 import life.qbic.data_download.rest.security.RequestAuthorizationManagerFactory;
 import life.qbic.data_download.rest.security.TokenEncoder;
 import life.qbic.data_download.rest.security.acl.GroupSidProvider;
@@ -90,11 +92,24 @@ public class SecurityConfig {
     return new ProviderManager(authenticationProvider);
   }
 
+  @Bean("tokenAuthenticationEntryPoint")
+  public QbicTokenAuthenticationEntryPoint authenticationEntryPoint(
+      @Value("${server.download.token-name}") String tokenName) {
+    return new QbicTokenAuthenticationEntryPoint(tokenName);
+  }
+
+  @Bean("tokenAccessDeniedHandler")
+  public QbicTokenAccessDeniedHandler accessDeniedHandler() {
+    return new QbicTokenAccessDeniedHandler();
+  }
+
   @Bean("tokenAuthenticationFilter")
   public QBiCTokenAuthenticationFilter authenticationFilter(
       @Qualifier("tokenAuthenticationManager") AuthenticationManager authenticationManager,
-      @Value("${server.download.token-name}") String tokenName) {
-    return new QBiCTokenAuthenticationFilter(authenticationManager, tokenName);
+      @Value("${server.download.token-name}") String tokenName,
+      @Qualifier("tokenAuthenticationEntryPoint") QbicTokenAuthenticationEntryPoint authenticationEntryPoint) {
+    return new QBiCTokenAuthenticationFilter(authenticationManager, tokenName,
+        authenticationEntryPoint);
   }
 
 
@@ -102,6 +117,8 @@ public class SecurityConfig {
   public SecurityFilterChain apiFilterChain(HttpSecurity http,
       @Qualifier("tokenAuthenticationProvider") QBiCTokenAuthenticationProvider authenticationProvider,
       @Qualifier("tokenAuthenticationFilter") QBiCTokenAuthenticationFilter tokenAuthenticationFilter,
+      @Qualifier("tokenAuthenticationEntryPoint") QbicTokenAuthenticationEntryPoint authenticationEntryPoint,
+      @Qualifier("tokenAccessDeniedHandler") QbicTokenAccessDeniedHandler accessDeniedHandler,
       @Qualifier("authorizationManagerFactory") RequestAuthorizationManagerFactory requestAuthorizationManagerFactory
   ) throws Exception {
     http
@@ -111,6 +128,13 @@ public class SecurityConfig {
                 .permitAll())
         .redirectToHttps(Customizer.withDefaults())
         .authenticationProvider(authenticationProvider)
+        // Authentication failures (missing/invalid/expired token) answer with 401 and a
+        // WWW-Authenticate challenge; a valid token without the required permission answers
+        // with a plain 403.
+        .exceptionHandling(exceptionHandling ->
+            exceptionHandling
+                .authenticationEntryPoint(authenticationEntryPoint)
+                .accessDeniedHandler(accessDeniedHandler))
         .addFilterAt(tokenAuthenticationFilter, BasicAuthenticationFilter.class)
         .authorizeHttpRequests(authorizedRequest ->
             authorizedRequest

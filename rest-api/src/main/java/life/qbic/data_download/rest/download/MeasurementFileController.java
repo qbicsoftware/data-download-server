@@ -103,6 +103,7 @@ public class MeasurementFileController {
   @Parameter(name = "measurementId", required = true, description = "The identifier of the measurement", example = "NGSQ0001006AO-25948529211108")
   @ApiResponses(value = {
       @ApiResponse(responseCode = "200", description = "successful operation, the manifest is returned", content = @Content(schema = @Schema(implementation = MeasurementManifest.class))),
+      @ApiResponse(responseCode = "401", description = "unauthorized, the personal access token is missing, invalid or expired"),
       @ApiResponse(responseCode = "403", description = "forbidden, you do not have access to this resource"),
       @ApiResponse(responseCode = "404", description = "measurement not found"),
   })
@@ -139,6 +140,7 @@ public class MeasurementFileController {
   @Parameter(name = "measurementId", required = true, description = "The identifier of the measurement", example = "NGSQ0001006AO-25948529211108")
   @ApiResponses(value = {
       @ApiResponse(responseCode = "200", description = "successful operation, the ZIP archive is downloaded", content = @Content(schema = @Schema(implementation = Void.class))),
+      @ApiResponse(responseCode = "401", description = "unauthorized, the personal access token is missing, invalid or expired"),
       @ApiResponse(responseCode = "403", description = "forbidden, you do not have access to this resource"),
       @ApiResponse(responseCode = "404", description = "measurement not found"),
   })
@@ -239,6 +241,7 @@ public class MeasurementFileController {
   @ApiResponses(value = {
       @ApiResponse(responseCode = "200", description = "successful operation, the file is downloaded", content = @Content(schema = @Schema(implementation = Void.class))),
       @ApiResponse(responseCode = "206", description = "partial content, the requested byte range is downloaded", content = @Content(schema = @Schema(implementation = Void.class))),
+      @ApiResponse(responseCode = "401", description = "unauthorized, the personal access token is missing, invalid or expired"),
       @ApiResponse(responseCode = "403", description = "forbidden, you do not have access to this resource"),
       @ApiResponse(responseCode = "404", description = "measurement or file not found"),
       @ApiResponse(responseCode = "416", description = "the requested byte range is not satisfiable"),
