@@ -1,5 +1,7 @@
 # Data Download Server
 
+[![dependency vulnerabilities](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/KochTobi/73f06fda8116a3ca71bb27546a7ae719/raw/vulnerabilities.json)](https://github.com/qbicsoftware/data-download-server/security/code-scanning)
+
 Spring Boot service for downloading (bio)measurement data via the QBiC download-API.
 
 ## Configuration
@@ -130,3 +132,19 @@ automatically (`.github/workflows/create-release.yml`).
 Run the server and visit
 [http://localhost:8090/swagger-ui.html](http://localhost:8090/swagger-ui.html)
 (port depends on your configuration; default `8090`).
+
+## Security
+
+Dependencies are scanned for known CVEs daily (and on pushes to `main`/`development` and PRs to
+`main`) by the
+[Dependency Vulnerability Scan](.github/workflows/dependency-vulnerability-scan.yml) workflow.
+It builds a CycloneDX SBOM and scans it with [Grype](https://github.com/anchore/grype). Findings
+are published to **Security → Code scanning** and as a workflow artifact, and summarised in the
+run's job summary.
+
+- Process, mitigations and how to accept a risk: [`docs/security/vulnerability-management.md`](docs/security/vulnerability-management.md)
+- Accepted risks (reason + expiry required): [`.github/grype.yaml`](.github/grype.yaml)
+
+The badge at the top of this README is an endpoint badge served from a gist written by the
+workflow. Only `main` publishes it, so a `development` or PR run never overwrites it. See the
+one-time badge setup in the [vulnerability management doc](docs/security/vulnerability-management.md#5-one-time-setup-for-the-badge).
