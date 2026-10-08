@@ -31,6 +31,16 @@ CREATE TABLE `proteomics_measurement`
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_general_ci;
 
+CREATE TABLE `ip_measurements`
+(
+    `measurement_id`  varchar(255) NOT NULL,
+    `measurementCode` varchar(255) DEFAULT NULL,
+    `projectId`       varchar(255) DEFAULT NULL,
+    PRIMARY KEY (`measurement_id`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_general_ci;
+
 CREATE TABLE `roles`
 (
     `id`          bigint(20) NOT NULL AUTO_INCREMENT,

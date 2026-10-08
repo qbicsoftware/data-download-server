@@ -3,6 +3,8 @@ package life.qbic.data_download.rest.security.acl;
 import static java.util.function.Predicate.not;
 
 import java.util.Optional;
+import life.qbic.data_download.rest.security.jpa.measurement.ImmunopeptidomicsMeasurementProject;
+import life.qbic.data_download.rest.security.jpa.measurement.ImmunopeptidomicsMeasurementRepository;
 import life.qbic.data_download.rest.security.jpa.measurement.NGSMeasurementProject;
 import life.qbic.data_download.rest.security.jpa.measurement.NGSMeasurementRepository;
 import life.qbic.data_download.rest.security.jpa.measurement.ProteomicsMeasurementProject;
@@ -12,11 +14,14 @@ public class QBiCMeasurementMappingService implements MeasurementMappingService{
 
   private final NGSMeasurementRepository ngsMeasurementRepository;
   private final ProteomicsMeasurementRepository proteomicsMeasurementRepository;
+  private final ImmunopeptidomicsMeasurementRepository immunopeptidomicsMeasurementRepository;
 
   public QBiCMeasurementMappingService(NGSMeasurementRepository ngsMeasurementRepository,
-      ProteomicsMeasurementRepository proteomicsMeasurementRepository) {
+      ProteomicsMeasurementRepository proteomicsMeasurementRepository,
+      ImmunopeptidomicsMeasurementRepository immunopeptidomicsMeasurementRepository) {
     this.ngsMeasurementRepository = ngsMeasurementRepository;
     this.proteomicsMeasurementRepository = proteomicsMeasurementRepository;
+    this.immunopeptidomicsMeasurementRepository = immunopeptidomicsMeasurementRepository;
   }
 
   @Override
@@ -29,6 +34,11 @@ public class QBiCMeasurementMappingService implements MeasurementMappingService{
     if (proteomicsMeasurementRepository.existsByMeasurementCode(measurementId)) {
       return proteomicsMeasurementRepository.findByMeasurementCode(measurementId)
           .map(ProteomicsMeasurementProject::getProjectId)
+          .filter(not(String::isBlank));
+    }
+    if (immunopeptidomicsMeasurementRepository.existsByMeasurementCode(measurementId)) {
+      return immunopeptidomicsMeasurementRepository.findByMeasurementCode(measurementId)
+          .map(ImmunopeptidomicsMeasurementProject::getProjectId)
           .filter(not(String::isBlank));
     }
     return Optional.empty();
