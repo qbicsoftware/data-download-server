@@ -33,6 +33,32 @@
   <dependencyManagement>
     <dependencies>
       <!--
+        Jackson BOMs. Jackson 3 reuses the Jackson 2 annotations artifact
+        (com.fasterxml.jackson.core:jackson-annotations), and each 3.x release pins
+        it to a matching 2.x version. Managing Jackson through its BOMs keeps
+        annotations, core, databind and the format modules in lock-step, avoiding
+        partial-bump failures such as NoClassDefFoundError: JsonApplyView.
+
+        Jackson 2 is still required transitively (springdoc -> swagger-core), so both
+        BOMs are imported. They come before the Spring Boot BOM because, for a given
+        managed coordinate, the first import wins.
+      -->
+      <dependency>
+        <groupId>com.fasterxml.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>2.22.3</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>tools.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>3.2.3</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <!--
         Spring Boot's curated dependency set. Imported once here so every module
         resolves the same versions. An explicit entry in this same section takes
         precedence over a BOM imported into it, so the CVE pins below override the
@@ -65,36 +91,6 @@
         <groupId>org.apache.tomcat.embed</groupId>
         <artifactId>tomcat-embed-websocket</artifactId>
         <version>11.0.25</version>
-      </dependency>
-      <dependency>
-        <groupId>com.fasterxml.jackson.core</groupId>
-        <artifactId>jackson-core</artifactId>
-        <version>2.21.7</version>
-      </dependency>
-      <dependency>
-        <groupId>com.fasterxml.jackson.core</groupId>
-        <artifactId>jackson-databind</artifactId>
-        <version>2.21.7</version>
-      </dependency>
-      <dependency>
-        <groupId>com.fasterxml.jackson.dataformat</groupId>
-        <artifactId>jackson-dataformat-yaml</artifactId>
-        <version>2.21.7</version>
-      </dependency>
-      <dependency>
-        <groupId>com.fasterxml.jackson.datatype</groupId>
-        <artifactId>jackson-datatype-jsr310</artifactId>
-        <version>2.21.7</version>
-      </dependency>
-      <dependency>
-        <groupId>tools.jackson.core</groupId>
-        <artifactId>jackson-core</artifactId>
-        <version>3.1.7</version>
-      </dependency>
-      <dependency>
-        <groupId>tools.jackson.core</groupId>
-        <artifactId>jackson-databind</artifactId>
-        <version>3.1.7</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
