@@ -33,13 +33,23 @@
   <dependencyManagement>
     <dependencies>
       <!--
-        CVE fixes (see .github/grype.yaml and docs/security/vulnerability-management.md).
+        Spring Boot's curated dependency set. Imported once here so every module
+        resolves the same versions. An explicit entry in this same section takes
+        precedence over a BOM imported into it, so the CVE pins below override the
+        versions selected by the Spring Boot BOM.
+      -->
+      <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-dependencies</artifactId>
+        <version>${spring.boot.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
 
-        The module POMs import the Spring Boot BOM (spring-boot-dependencies), and a
-        BOM imported by a child POM takes precedence over one imported by this parent.
-        These explicit entries therefore pin the affected coordinates here, overriding
-        the versions selected by the Spring Boot BOM. Sibling artifacts must be kept in
-        lock-step to avoid version skew (e.g. tomcat-embed-el/-websocket).
+      <!--
+        CVE fixes (see .github/grype.yaml and docs/security/vulnerability-management.md).
+        Sibling artifacts must be kept in lock-step to avoid version skew
+        (e.g. tomcat-embed-el/-websocket).
       -->
       <dependency>
         <groupId>org.apache.tomcat.embed</groupId>
@@ -140,5 +150,22 @@
       <url>https://qbic-repo.qbic.uni-tuebingen.de/repository/maven-snapshots</url>
     </snapshotRepository>
   </distributionManagement>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>3.5.1</version>
+        </plugin>
+        <plugin>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-maven-plugin</artifactId>
+          <version>${spring.boot.version}</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
 
 </project>
