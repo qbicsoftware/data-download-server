@@ -92,6 +92,13 @@
         <artifactId>tomcat-embed-websocket</artifactId>
         <version>11.0.27</version>
       </dependency>
+      <!-- GHSA-grfq-r75j-rw9x (and siblings GHSA-h599-m3w5-9m7x,
+           GHSA-fhx5-2xqw-2cgm, GHSA-4jq2-8v3c-97w8) are fixed in 3.5.11. -->
+      <dependency>
+        <groupId>org.mariadb.jdbc</groupId>
+        <artifactId>mariadb-java-client</artifactId>
+        <version>3.5.11</version>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 
