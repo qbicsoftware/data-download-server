@@ -52,8 +52,52 @@ jobs:
       - name: Build with Maven
         run: mvn -B package --file pom.xml
 
-      - name: Create GitHub Release
-        run: gh release create "${{ github.event.inputs.versionTag }}" --generate-notes --fail-on-no-commits
+      # The release ships exactly one artifact: the deployable application, which is a
+      # Spring Boot fat jar. It is self-contained - every internal module and
+      # zzzz-openbis-api is nested under BOOT-INF/lib - so the per-module jars add
+      # nothing a consumer can use.
+      - name: Collect release assets
+        run: |
+          set -euo pipefail
+          # Find the application jar by path, not by hardcoded version, so a version
+          # bump cannot silently match nothing. Spring Boot's repackage leaves a
+          # .original file next to it, which is excluded here.
+          app_jar=$(find . -path '*/target/rest-server-*.jar' \
+            -not -name '*.original' -not -name '*-sources.jar' -not -name '*-javadoc.jar' \
+            | sort | head -1)
+          if [ -z "$app_jar" ]; then
+            echo "::error::No rest-server jar found under any target/ directory."
+            exit 1
+          fi
+          echo "Application jar: $app_jar"
+
+          : > release-assets.txt
+          echo "$app_jar" >> release-assets.txt
+
+          echo "Release assets:"
+          cat release-assets.txt
+
+          jars=$(grep -c '\.jar$' release-assets.txt || true); jars=${jars:-0}
+          echo "collected: jars=$jars"
+          if [ "$jars" -ne 1 ]; then
+            echo "::error::Expected exactly one jar, collected $jars."
+            exit 1
+          fi
+
+      - name: Create or update GitHub Release
+        # Idempotent so a re-run after a partial failure does not fail on an
+        # existing release; --clobber replaces assets already uploaded.
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.inputs.versionTag }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; updating assets."
+          else
+            gh release create "$tag" --generate-notes --fail-on-no-commits
+          fi
+          if [ -s release-assets.txt ]; then
+            xargs gh release upload "$tag" --clobber < release-assets.txt
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
 
