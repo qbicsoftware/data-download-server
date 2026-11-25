@@ -31,7 +31,6 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '21'
-          settings-path: ${{ github.workspace }}
 
       - name: Load local Maven repository cache
         uses: actions/cache@v6
@@ -48,14 +47,10 @@ jobs:
         # set-property to update the property value instead.
         run: mvn org.codehaus.mojo:versions-maven-plugin:2.18.0:set-property -Dproperty=revision -DnewVersion="${{ github.event.inputs.versionTag }}" -DgenerateBackupPoms=false
 
+      # The GitHub release is the distribution channel; nothing is deployed to an
+      # external Maven repository.
       - name: Build with Maven
         run: mvn -B package --file pom.xml
-
-      - name: Publish artefact to QBiC Nexus Repository
-        run: mvn --quiet --settings $GITHUB_WORKSPACE/.github.settings.xml deploy
-        env:
-          MAVEN_REPO_USERNAME: ${{ secrets.NEXUS_USERNAME }}
-          MAVEN_REPO_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
 
       - name: Create GitHub Release
         run: gh release create "${{ github.event.inputs.versionTag }}" --generate-notes --fail-on-no-commits
