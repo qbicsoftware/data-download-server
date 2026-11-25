@@ -57,6 +57,22 @@
       <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
       <version>3.2.1</version>
     </dependency>
+    <!--
+      zzzz-openbis-api is a shaded jar that bundles parts of Jackson 2.9 under
+      com.fasterxml.jackson. Because its ObjectMapper is visible on the classpath,
+      Spring Data's SpringDataWebConfigurationImportSelector enables the deprecated
+      Jackson 2 page module. That module needs ToStringSerializerBase, which only
+      exists since Jackson 2.10, so without a complete Jackson 2 databind startup
+      fails with NoClassDefFoundError. springdoc 3.2.1 no longer brings Jackson 2
+      transitively, hence this explicit dependency.
+
+      Keep this before the openbis-connector dependency so the complete Jackson 2
+      databind is packaged ahead of the classes bundled in zzzz-openbis-api.
+    -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
     <dependency>
       <groupId>life.qbic.data-download</groupId>
       <artifactId>measurement-provider</artifactId>
