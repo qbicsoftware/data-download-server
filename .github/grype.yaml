@@ -12,6 +12,15 @@
 # Do not add an entry to silence a finding that can be fixed by upgrading a
 # version — fix it instead (see docs/security/vulnerability-management.md).
 ignore:
+  # Accepted risk (temporary): the fixed Tomcat release 11.0.30 is not yet
+  # available on Maven Central. Remove this entry and bump the Tomcat pins in
+  # pom.xml as soon as 11.0.30 is published.
+  - vulnerability: CVE-2026-133325
+    package:
+      name: tomcat-embed-core
+      version: "11.0.29"
+    reason: "Vulnerable code path not reachable: no Tomcat cluster or TLS-PSK is configured; fix 11.0.30 unreleased; exp:2026-12-31; see code-scanning alert #29 / GHSA-j322-r8cv-7j54"
+
   # Example (keep commented until a risk is actually accepted):
   #
   # - vulnerability: CVE-2022-12345
