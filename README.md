@@ -100,13 +100,11 @@ mvn -pl rest-api -am package
 mvn -pl rest-api -am clean package
 ```
 
-### Deploy to Nexus (release)
+### Releases
 
-```bash
-mvn deploy
-```
-
-Publishes all modules to the QBiC Nexus repository configured in `distributionManagement`.
+Releases are distributed as GitHub release assets; nothing is published to an external Maven
+repository. The one non-Central dependency, `life.qbic:zzzz-openbis-api`, is resolved from the
+[QBiC Maven Repository](https://qbicsoftware.github.io/maven-repository/).
 
 ## Versioning
 

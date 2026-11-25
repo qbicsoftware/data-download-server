@@ -23,7 +23,6 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '21'
-          settings-path: ${{ github.workspace }}
 
       - name: Load local Maven repository cache
         uses: actions/cache@v6
