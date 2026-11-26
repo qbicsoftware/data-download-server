@@ -1,8 +1,8 @@
 name: Label Pull Requests
 
+# Read-only by default; the labeler job opts in to pull-requests: write.
 permissions:
   contents: read
-  pull-requests: write
 
 on:
   pull_request:
@@ -11,6 +11,9 @@ on:
 jobs:
   Assign-Label-To-Pull-Request:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0
         with:

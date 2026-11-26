@@ -11,6 +11,10 @@ on:
       - opened
       - ready_for_review
 
+# Read-only by default; this workflow only checks out and tests the code.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest

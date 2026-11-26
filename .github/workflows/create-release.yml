@@ -7,15 +7,19 @@ on:
         description: 'Version Tag (semantic version)'
         required: true
 
+# Read-only by default. The release job opts in to the write permissions it
+# needs, so a token minted for any other job stays read-only.
 permissions:
-  id-token: write # This is required for requesting the JWT
-  contents: write # This is required for branch creation
-  pull-requests: write # required for opening pull requests
-  attestations: write   # required for provenance
+  contents: read
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write # This is required for requesting the JWT
+      contents: write # This is required for branch creation and release assets
+      pull-requests: write # required for opening pull requests
+      attestations: write # required for provenance
     steps:
       - name: Validate version tag format
         run: |
