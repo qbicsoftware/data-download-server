@@ -1,6 +1,7 @@
 # Data Download Server
 
 [![dependency vulnerabilities](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/KochTobi/73f06fda8116a3ca71bb27546a7ae719/raw/vulnerabilities.json)](https://github.com/qbicsoftware/data-download-server/security/code-scanning)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/qbicsoftware/data-download-server/badge)](https://securityscorecards.dev/viewer/?uri=github.com/qbicsoftware/data-download-server)
 
 Spring Boot service for downloading (bio)measurement data via the QBiC download-API.
 
