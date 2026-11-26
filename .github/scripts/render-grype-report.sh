@@ -58,7 +58,8 @@ fi
   echo "# Dependency vulnerability report"
   echo
   echo "_Generated $(date -u '+%Y-%m-%d %H:%M UTC') from the CycloneDX SBOM of this"
-  echo "revision, scanned with [Grype](https://github.com/anchore/grype)._"
+  echo "revision, scanned with [Grype](https://github.com/anchore/grype) and Spring's"
+  echo "[security advisory feed](https://spring.io/security)._"
   echo
   echo "## Summary"
   echo
@@ -101,7 +102,7 @@ fi
         if [[ -n "$fixed" ]]; then
           mitigation="Upgrade \`${pkg}\` to \`${fixed}\` (bump the pin in the owning module pom, or manage it in the root \`pom.xml\`)"
         else
-          mitigation="No upstream fix (${state}); check reachability, else accept in \`.github/grype.yaml\` with reason + expiry"
+          mitigation="No upstream fix (${state}); check reachability, else accept in \`.github/grype.yaml\` with reason + expiry + owner"
         fi
         printf '| `%s` | %s | `%s` | `%s` | %s | %s |\n' \
           "$id" "$severity" "$pkg" "$installed" "${fixed:-—}" "$mitigation"
@@ -118,11 +119,11 @@ fi
   echo "   \`pom.xml\` at the fixed version."
   echo "2. **Verify reachability** when no fix exists and record the assessment on"
   echo "   the tracking issue."
-  echo "3. **Accept the risk** only with a documented reason and expiry in"
-  echo "   \`.github/grype.yaml\`. Expired acceptances are re-reviewed — see"
-  echo "   \`docs/security/vulnerability-management.md\`."
-  echo "4. The full machine-readable list is attached as \`grype.json\`; findings also surface"
-  echo "   under **Security → Code scanning** as SARIF."
+  echo "3. **Accept the risk** only with a documented reason, expiry and owner in"
+  echo "   \`.github/grype.yaml\`. The scan fails when the ledger has expired or"
+  echo "   unowned entries — see \`docs/security/vulnerability-management.md\`."
+  echo "4. The full machine-readable list is attached as \`grype.json\` (Grype + Spring"
+  echo "   findings); alerts also surface under **Security → Code scanning** as SARIF."
   echo
   echo "> This report only covers dependencies resolved into the CycloneDX SBOM. Secret"
   echo "> scanning and SAST (CodeQL) are handled by separate workflows."

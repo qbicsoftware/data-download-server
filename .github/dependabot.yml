@@ -2,6 +2,10 @@
 # package ecosystems to update and where the package manifests are located.
 # Please see the documentation for all configuration options:
 # https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
+#
+# NOTE: This file only controls *version upgrades*. CVE detection, reporting and
+# the merge gate are handled by .github/workflows/dependency-vulnerability-scan.yml
+# (see docs/security/vulnerability-management.md).
 
 version: 2
 updates:
@@ -17,8 +21,17 @@ updates:
       github-actions:
         patterns:
           - "*"
+  # All Maven modules are covered by one entry so updates can be grouped across
+  # them (a group is scoped to one update entry). Each directory is listed
+  # explicitly rather than relying on recursion from the root.
   - package-ecosystem: "maven"
-    directory: "/"
+    directories:
+      - "/"
+      - "/zip"
+      - "/measurement-provider"
+      - "/storage-provider"
+      - "/openbis-connector"
+      - "/rest-api"
     schedule:
       interval: "weekly"
       day: "thursday"

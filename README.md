@@ -136,12 +136,19 @@ Run the server and visit
 Dependencies are scanned for known CVEs daily (and on pushes to `main`/`development` and PRs to
 `main`) by the
 [Dependency Vulnerability Scan](.github/workflows/dependency-vulnerability-scan.yml) workflow.
-It builds a CycloneDX SBOM and scans it with [Grype](https://github.com/anchore/grype). Findings
-are published to **Security → Code scanning** and as a workflow artifact, and summarised in the
-run's job summary.
+It builds a CycloneDX SBOM and scans it with both [Grype](https://github.com/anchore/grype) and
+Spring's own [security advisory feed](https://spring.io/security); Grype's upstream feeds lag
+Spring's coordinated disclosure, so the direct check closes that window. Findings are published
+to **Security → Code scanning** (separate `dependency-scan` and `spring-advisory-scan`
+categories), as workflow artifacts, and in the run's job summary.
+
+Any **critical or high** finding blocks a merge into `main` unless a documented, time-boxed
+accepted risk exists. [OpenSSF Scorecard](.github/workflows/scorecard.yml) additionally monitors
+supply-chain hygiene.
 
 - Process, mitigations and how to accept a risk: [`docs/security/vulnerability-management.md`](docs/security/vulnerability-management.md)
-- Accepted risks (reason + expiry required): [`.github/grype.yaml`](.github/grype.yaml)
+- Accepted risks (reason + expiry + owner required): [`.github/grype.yaml`](.github/grype.yaml)
+- Reporting a vulnerability: [`SECURITY.md`](SECURITY.md)
 
 The badge at the top of this README is an endpoint badge served from a gist written by the
 workflow. Only `main` publishes it, so a `development` or PR run never overwrites it. See the

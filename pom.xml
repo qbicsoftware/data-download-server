@@ -77,6 +77,13 @@
         Sibling artifacts must be kept in lock-step to avoid version skew
         (e.g. tomcat-embed-el/-websocket).
       -->
+      <!--
+        Tomcat 11.0.29 is affected by CVE-2026-133325 (cluster TLS-PSK with
+        TLS 1.3). The fixed release 11.0.30 is not published yet. This service
+        does not use Tomcat clustering, so the risk is accepted temporarily in
+        .github/grype.yaml (expires 2026-12-31). Once 11.0.30 is available, bump
+        all three Tomcat artifacts and remove that acceptance.
+      -->
       <dependency>
         <groupId>org.apache.tomcat.embed</groupId>
         <artifactId>tomcat-embed-core</artifactId>
