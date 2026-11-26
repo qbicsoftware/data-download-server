@@ -7,7 +7,14 @@
 #
 #   * Every `reason` MUST contain a ticket reference and an expiry date in the
 #     form `exp:YYYY-MM-DD`.
-#   * Expired entries must be re-assessed.
+#   * Every entry MUST name an `owner` (a person or team) who re-reviews it.
+#   * Expired entries are NOT honoured by the Spring advisory check, and the
+#     scan job fails when the ledger has expired or unowned entries (see the
+#     `--audit-ledger` step in the workflow).
+#
+# `package.name` is the ARTIFACT name Grype parsed from the SBOM, not the Maven
+# coordinate. `tomcat-embed-core` suppresses; `org.apache.tomcat.embed:tomcat-embed-core`
+# silently does not — a coordinate here fails open.
 #
 # Do not add an entry to silence a finding that can be fixed by upgrading a
 # version — fix it instead (see docs/security/vulnerability-management.md).
@@ -20,11 +27,13 @@ ignore:
       name: tomcat-embed-core
       version: "11.0.29"
     reason: "Vulnerable code path not reachable: no Tomcat cluster or TLS-PSK is configured; fix 11.0.30 unreleased; exp:2026-12-31; see code-scanning alert #29 / GHSA-j322-r8cv-7j54"
+    owner: "@qbicsoftware/itss"
 
   # Example (keep commented until a risk is actually accepted):
   #
   # - vulnerability: CVE-2022-12345
   #   package:
-  #     name: com.example:some-lib
+  #     name: some-lib          # ARTIFACT name, not the Maven coordinate
   #     version: "1.2.3"
   #   reason: "Vulnerable code path not reachable; exp:2026-06-30; see issue #1234"
+  #   owner: "@qbicsoftware/itss"
