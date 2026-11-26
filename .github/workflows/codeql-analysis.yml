@@ -25,6 +25,11 @@ on:
   schedule:
     - cron: '21 1 * * 4'
 
+# Read-only by default; the analyze job opts in to the write permissions it
+# needs (security-events for the SARIF upload).
+permissions:
+  contents: read
+
 jobs:
   analyze:
     runs-on: ubuntu-latest
